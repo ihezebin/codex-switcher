@@ -411,6 +411,11 @@ function showMainWindow() {
   mainWindow.focus();
 }
 
+function sendStartupStatus(message) {
+  if (mainWindow && !mainWindow.isDestroyed())
+    mainWindow.webContents.send("codex:startup-status", message);
+}
+
 async function switchFromTray(name) {
   try {
     const state = await applyProfile(name);
@@ -575,8 +580,11 @@ app.whenReady().then(async () => {
 
     // Tray creation and profile scanning are intentionally deferred until the
     // window is already visible, so first launch is not a blank native window.
+    sendStartupStatus("正在初始化 Codex 配置目录…");
     await ensureCodexHome();
+    sendStartupStatus("正在创建系统托盘菜单…");
     await createTray();
+    sendStartupStatus("正在等待配置加载完成…");
   } catch (error) {
     await dialog.showMessageBox({
       type: "error",

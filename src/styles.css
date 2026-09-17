@@ -72,8 +72,27 @@ html[data-theme="dark"] body {
   width: min(720px, 90%);
 }
 
+.loading-content {
+  width: min(720px, 90%);
+}
+
+.loading-content .ant-skeleton {
+  width: 100%;
+}
+
+.loading-status {
+  margin-top: 18px;
+  color: #8492a6;
+  font-size: 14px;
+  text-align: center;
+}
+
 html[data-theme="dark"] .loading-screen {
   background: #111827;
+}
+
+html[data-theme="dark"] .loading-status {
+  color: #94a3b8;
 }
 .app-shell {
   width: 100%;

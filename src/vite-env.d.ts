@@ -34,6 +34,7 @@ interface Window {
     minimizeWindow: () => void;
     toggleMaximizeWindow: () => Promise<boolean>;
     closeWindow: () => void;
+    onStartupStatus: (callback: (message: string) => void) => () => void;
     onStateChanged: (callback: (state: {
       codexHome: string;
       hasCodexConfig: boolean;

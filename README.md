@@ -2,7 +2,8 @@
 
 一个基于 Electron + React + Vite + Ant Design 的 macOS / Windows Codex profile 切换工具。
 
-![Codex Switcher](./screenshot.png)
+![Codex Switcher](./screenshot1.png)
+![Codex Switcher](./screenshot2.png)
 
 ## 开发环境
 

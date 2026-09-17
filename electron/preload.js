@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+let latestStartupStatus = '';
+const startupStatusListeners = new Set();
+
+ipcRenderer.on('codex:startup-status', (_, message) => {
+  latestStartupStatus = message;
+  startupStatusListeners.forEach((listener) => listener(message));
+});
+
 contextBridge.exposeInMainWorld('codexAPI', {
   platform: process.platform,
   getState: () => ipcRenderer.invoke('codex:state'),
@@ -12,6 +20,11 @@ contextBridge.exposeInMainWorld('codexAPI', {
   minimizeWindow: () => ipcRenderer.send('window:minimize'),
   toggleMaximizeWindow: () => ipcRenderer.invoke('window:toggle-maximize'),
   closeWindow: () => ipcRenderer.send('window:close'),
+  onStartupStatus: (callback) => {
+    startupStatusListeners.add(callback);
+    if (latestStartupStatus) callback(latestStartupStatus);
+    return () => startupStatusListeners.delete(callback);
+  },
   onStateChanged: (callback) => {
     const listener = (_, state) => callback(state);
     ipcRenderer.on('codex:state-changed', listener);

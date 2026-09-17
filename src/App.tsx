@@ -65,6 +65,7 @@ function App() {
   const [selectedName, setSelectedName] = useState<string>();
   const [selected, setSelected] = useState<CodexProfile>();
   const [loading, setLoading] = useState(true);
+  const [startupStatus, setStartupStatus] = useState("正在读取 Codex 配置…");
   const [detailLoading, setDetailLoading] = useState(false);
   const [customDrawerOpen, setCustomDrawerOpen] = useState(false);
   const [customContent, setCustomContent] = useState("");
@@ -87,6 +88,16 @@ function App() {
     document.documentElement.dataset.theme = themeMode;
     localStorage.setItem("codex-switcher-theme", themeMode);
   }, [themeMode]);
+
+  useEffect(() => {
+    if (!window.codexAPI?.onStartupStatus) return;
+    return window.codexAPI.onStartupStatus(setStartupStatus);
+  }, []);
+
+  useEffect(() => {
+    if (!loading)
+      window.dispatchEvent(new Event("codex-switcher:app-ready"));
+  }, [loading]);
 
   const refresh = useCallback(async (preferredName?: string) => {
     // Keeps the renderer graceful if the preload bridge is unavailable (for example, in a plain browser preview).
@@ -378,7 +389,10 @@ function App() {
     return (
       <ConfigProvider locale={zhCN} theme={antThemeConfig}>
         <div className="loading-screen">
-          <Skeleton active paragraph={{ rows: 5 }} />
+          <div className="loading-content">
+            <Skeleton active paragraph={{ rows: 5 }} />
+            <div className="loading-status">{startupStatus}</div>
+          </div>
         </div>
       </ConfigProvider>
     );
