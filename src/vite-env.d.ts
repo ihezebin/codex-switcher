@@ -15,13 +15,29 @@ interface CodexProfile {
 
 interface Window {
   codexAPI: {
-    getState: () => Promise<{ codexHome: string; profiles: CodexProfile[] }>;
+    platform: string;
+    getState: () => Promise<{
+      codexHome: string;
+      hasCodexConfig: boolean;
+      profiles: CodexProfile[];
+    }>;
     getProfile: (name: string) => Promise<CodexProfile>;
     saveProfile: (payload: { name: string; model?: string; reviewModel?: string; baseUrl?: string; apiKey?: string; content?: string }) => Promise<CodexProfile>;
     createProfile: (payload: { name: string; model?: string; reviewModel?: string; baseUrl?: string; apiKey?: string }) => Promise<CodexProfile>;
-    applyProfile: (name: string) => Promise<{ codexHome: string; profiles: CodexProfile[] }>;
+    applyProfile: (name: string) => Promise<{
+      codexHome: string;
+      hasCodexConfig: boolean;
+      profiles: CodexProfile[];
+    }>;
     openFolder: () => Promise<string>;
     openExternal: (url: string) => Promise<void>;
-    onStateChanged: (callback: (state: { codexHome: string; profiles: CodexProfile[] }) => void) => () => void;
+    minimizeWindow: () => void;
+    toggleMaximizeWindow: () => Promise<boolean>;
+    closeWindow: () => void;
+    onStateChanged: (callback: (state: {
+      codexHome: string;
+      hasCodexConfig: boolean;
+      profiles: CodexProfile[];
+    }) => void) => () => void;
   };
 }
