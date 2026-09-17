@@ -1,0 +1,31 @@
+{
+  "name": "codex-switcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A desktop profile switcher for Codex configuration",
+  "main": "dist-electron/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.0.0",
+    "@chinese-fonts/xiaolai": "^3.0.0",
+    "@iarna/toml": "^3.0.0",
+    "antd": "^5.24.8",
+    "electron": "^35.1.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron-vite": "^5.0.0",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.2"
+  }
+}
