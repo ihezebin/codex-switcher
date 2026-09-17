@@ -33,34 +33,22 @@ yarn typecheck
 yarn build
 ```
 
-构建当前操作系统的安装包：
+正式打包只保留以下两个命令：
 
 ```bash
-yarn dist
-```
-
-分别构建 Windows 和 macOS：
-
-```bash
-# Windows：生成 NSIS 安装包和 portable 便携版
-yarn dist:win
-
-# 只生成给别人安装的 Windows 安装向导
-yarn dist:win:installer
-
-# 可选：生成 Windows ARM64 包
-yarn dist:win:arm64
-
-# macOS：生成 DMG 和 ZIP
+# macOS Apple Silicon：生成 DMG 和 ZIP
 yarn dist:mac
+
+# Windows x64：生成 NSIS 安装器和 portable 便携版
+yarn dist:win
 ```
 
 打包结果位于 `release/`。建议在目标系统上完成最终打包：
 
 - Windows 使用 PowerShell 或 CMD 执行 `yarn dist:win`。
-- macOS 使用 Terminal 执行 `yarn dist:mac`。
+- macOS Apple Silicon 使用 Terminal 执行 `yarn dist:mac`。
 - 在 macOS 上交叉构建 Windows 安装包可能需要 Wine，Windows 原生构建最稳定。
-- `yarn dist:win` 默认生成 Windows x64 包；Apple Silicon macOS 上交叉构建会下载对应的 Windows Electron 运行时。
+- `yarn dist:win` 只生成 Windows x64 包；在 Apple Silicon macOS 上交叉构建会下载对应的 Windows Electron 运行时。
 - macOS 签名、公证和 Windows 代码签名需要额外配置证书，本项目默认生成未签名包。
 
 Windows 安装包支持自定义安装目录，并同时生成开始菜单和桌面快捷方式；portable 版本无需安装即可运行。给别人分发时使用 `release/Codex Switcher-0.1.0-win-x64.exe` 这类 NSIS 安装程序，不要分发 `*-portable.exe` 或 `win-unpacked/` 目录。

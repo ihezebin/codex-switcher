@@ -58,8 +58,22 @@ html[data-theme="dark"] body {
 }
 
 .loading-screen {
-  width: 520px;
-  margin: 260px auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: #f5f7fb;
+}
+
+.loading-screen .ant-skeleton {
+  width: min(720px, 90%);
+}
+
+html[data-theme="dark"] .loading-screen {
+  background: #111827;
 }
 .app-shell {
   width: 100%;

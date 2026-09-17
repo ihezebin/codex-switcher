@@ -484,7 +484,8 @@ async function createWindow() {
     maximizable: true,
     fullscreenable: true,
     icon: createLogoImage(),
-    backgroundColor: "#10131a",
+    backgroundColor: "#f5f7fb",
+    show: false,
     ...(isWindows ? { frame: false, autoHideMenuBar: true } : {}),
     ...(isMac
       ? {
@@ -499,10 +500,14 @@ async function createWindow() {
     },
   };
   const window = new BrowserWindow(windowOptions);
+  mainWindow = window;
 
-  const devUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
-  if (!app.isPackaged) await window.loadURL(devUrl);
-  else await window.loadFile(path.join(__dirname, "../../dist/index.html"));
+  const showLoadedWindow = () => {
+    if (!window.isDestroyed() && !window.isVisible()) window.show();
+  };
+  window.webContents.once("dom-ready", showLoadedWindow);
+  window.webContents.once("did-finish-load", showLoadedWindow);
+
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
   });
@@ -512,7 +517,11 @@ async function createWindow() {
       window.hide();
     }
   });
-  mainWindow = window;
+
+  const devUrl = process.env.VITE_DEV_SERVER_URL || "http://localhost:5173";
+  if (!app.isPackaged) await window.loadURL(devUrl);
+  else await window.loadFile(path.join(__dirname, "../../dist/index.html"));
+  showLoadedWindow();
   return window;
 }
 
@@ -558,11 +567,16 @@ ipcMain.on("window:close", (event) => {
 
 app.whenReady().then(async () => {
   try {
-    await ensureCodexHome();
     if (process.platform === "darwin" && app.dock)
       app.dock.setIcon(createLogoImage());
-    await createTray();
+
+    // Show the renderer's boot skeleton before doing filesystem and tray work.
     await createWindow();
+
+    // Tray creation and profile scanning are intentionally deferred until the
+    // window is already visible, so first launch is not a blank native window.
+    await ensureCodexHome();
+    await createTray();
   } catch (error) {
     await dialog.showMessageBox({
       type: "error",

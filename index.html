@@ -3,10 +3,213 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#10131a" />
+    <meta name="theme-color" content="#f5f7fb" />
     <title>Codex Switcher</title>
+    <script>
+      try {
+        if (localStorage.getItem("codex-switcher-theme") === "dark") {
+          document.documentElement.dataset.theme = "dark";
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", "#111827");
+        }
+      } catch (_) {
+        // localStorage may be unavailable; light theme is the default.
+      }
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #f5f7fb;
+      }
+
+      #boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 900px;
+        min-height: 640px;
+        background: #f5f7fb;
+        color: #172033;
+      }
+
+      .boot-loader-card {
+        width: min(520px, 72vw);
+        padding: 28px 30px;
+        border: 1px solid #e2e8f0;
+        border-radius: 18px;
+        background: #ffffff;
+        box-shadow: 0 18px 45px rgba(37, 99, 235, 0.09);
+      }
+
+      .boot-loader-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .boot-loader-logo {
+        display: block;
+        width: 40px;
+        height: 40px;
+        border-radius: 11px;
+        box-shadow: 0 6px 14px rgba(22, 119, 255, 0.2);
+      }
+
+      .boot-loader-title {
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: 0.01em;
+      }
+
+      .boot-loader-subtitle {
+        margin-top: 6px;
+        color: #8492a6;
+        font-size: 13px;
+      }
+
+      .boot-loader-skeleton {
+        height: 10px;
+        margin-top: 24px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: linear-gradient(
+          90deg,
+          #edf2f7 20%,
+          #dbeafe 45%,
+          #edf2f7 70%
+        );
+        background-size: 220% 100%;
+        animation: boot-loader-shimmer 1.45s ease-in-out infinite;
+      }
+
+      .boot-loader-skeleton.short {
+        width: 62%;
+        margin-top: 12px;
+      }
+
+      .boot-loader-progress {
+        position: relative;
+        height: 4px;
+        margin-top: 24px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #eaf0f7;
+      }
+
+      .boot-loader-progress::after {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -35%;
+        width: 35%;
+        border-radius: inherit;
+        background: #1677ff;
+        content: "";
+        animation: boot-loader-progress 1.2s ease-in-out infinite;
+      }
+
+      @keyframes boot-loader-shimmer {
+        0% {
+          background-position: 100% 0;
+        }
+        100% {
+          background-position: -100% 0;
+        }
+      }
+
+      @keyframes boot-loader-progress {
+        0% {
+          left: -35%;
+        }
+        100% {
+          left: 100%;
+        }
+      }
+
+      html[data-theme="dark"] {
+        color-scheme: dark;
+        background: #111827;
+      }
+
+      html[data-theme="dark"] body,
+      html[data-theme="dark"] #boot-loader {
+        background: #111827;
+      }
+
+      html[data-theme="dark"] #boot-loader {
+        color: #e5e7eb;
+      }
+
+      html[data-theme="dark"] .boot-loader-card {
+        border-color: #263244;
+        background: #182235;
+        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
+      }
+
+      html[data-theme="dark"] .boot-loader-subtitle {
+        color: #94a3b8;
+      }
+
+      html[data-theme="dark"] .boot-loader-skeleton {
+        background: linear-gradient(
+          90deg,
+          #263244 20%,
+          #334155 45%,
+          #263244 70%
+        );
+        background-size: 220% 100%;
+      }
+
+      html[data-theme="dark"] .boot-loader-progress {
+        background: #263244;
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-loader" aria-label="正在加载 Codex Switcher">
+      <div class="boot-loader-card">
+        <div class="boot-loader-brand">
+          <svg
+            class="boot-loader-logo"
+            viewBox="0 0 40 40"
+            role="img"
+            aria-hidden="true"
+          >
+            <rect width="40" height="40" rx="11" fill="#1677ff" />
+            <path
+              d="m15 13-7 7 7 7M25 13l7 7-7 7M23 10l-6 20"
+              fill="none"
+              stroke="#fff"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2.6"
+            />
+          </svg>
+          <div>
+            <div class="boot-loader-title">Codex Switcher</div>
+            <div class="boot-loader-subtitle">正在加载配置，请稍候…</div>
+          </div>
+        </div>
+        <div class="boot-loader-skeleton"></div>
+        <div class="boot-loader-skeleton short"></div>
+        <div class="boot-loader-progress"></div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

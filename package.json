@@ -1,6 +1,6 @@
 {
   "name": "codex-switcher",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "A desktop profile switcher for Codex configuration",
   "main": "dist-electron/main/index.js",
@@ -9,10 +9,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "dist": "yarn build && electron-builder --publish never",
     "dist:win": "yarn build && electron-builder --win --x64 --publish never",
-    "dist:win:installer": "yarn build && electron-builder --win nsis --x64 --publish never",
-    "dist:win:arm64": "yarn build && electron-builder --win --arm64 --publish never",
     "dist:mac": "yarn build && electron-builder --mac --publish never"
   },
   "dependencies": {

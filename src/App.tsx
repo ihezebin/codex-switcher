@@ -36,11 +36,13 @@ import {
   SwapOutlined,
 } from "@ant-design/icons";
 import zhCN from "antd/locale/zh_CN";
+import packageJson from "../package.json";
 
 const { Sider, Content } = Layout;
 const { Text, Title } = Typography;
 const REPOSITORY_URL = "http://github.com/ihezebin/codex-switcher";
 const SUPPORT_URL = "https://ncm.hezebin.com";
+const APP_VERSION = packageJson.version;
 
 type FormValues = {
   model: string;
@@ -285,6 +287,7 @@ function App() {
   };
 
   const handleOpenFolder = async () => {
+    setSettingsOpen(false);
     try {
       const error = await window.codexAPI.openFolder();
       if (error) {
@@ -292,10 +295,14 @@ function App() {
         return;
       }
       messageApi.success("已打开 Codex 配置目录");
-      setSettingsOpen(false);
     } catch (error) {
       messageApi.error((error as Error).message);
     }
+  };
+
+  const handleToggleTheme = () => {
+    setSettingsOpen(false);
+    setThemeMode(isDark ? "light" : "dark");
   };
 
   const hasProfiles = hasCodexConfig && profiles.length > 0;
@@ -329,7 +336,7 @@ function App() {
           type="text"
           className="settings-theme-button"
           icon={isDark ? <MoonOutlined /> : <SunOutlined />}
-          onClick={() => setThemeMode(isDark ? "light" : "dark")}
+          onClick={handleToggleTheme}
         >
           {isDark ? "切换为亮主题" : "切换为暗主题"}
         </Button>
@@ -729,7 +736,12 @@ function App() {
 
         <Modal
           open={aboutOpen}
-          title="关于 Codex Switcher"
+          title={
+            <Space size={8}>
+              <span>关于 Codex Switcher</span>
+              <Tag color="blue">v{APP_VERSION}</Tag>
+            </Space>
+          }
           centered
           footer={
             <Button type="primary" onClick={() => setAboutOpen(false)}>
