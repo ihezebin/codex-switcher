@@ -1,9 +1,20 @@
 {
   "name": "codex-switcher",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "A desktop profile switcher for Codex configuration",
   "main": "dist-electron/main/index.js",
+  "codexSwitcherUpdate": {
+    "notes": "",
+    "releaseUrl": "",
+    "minimumVersion": "",
+    "downloads": {
+      "darwin-arm64": "",
+      "darwin-x64": "",
+      "win32-x64": "",
+      "linux-x64": ""
+    }
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",

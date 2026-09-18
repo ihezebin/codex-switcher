@@ -54,6 +54,38 @@ yarn dist:win
 
 Windows 安装包支持自定义安装目录，并同时生成开始菜单和桌面快捷方式；portable 版本无需安装即可运行。给别人分发时使用 `release/Codex Switcher-0.1.0-win-x64.exe` 这类 NSIS 安装程序，不要分发 `*-portable.exe` 或 `win-unpacked/` 目录。
 
+## 版本更新配置
+
+应用启动后会从 GitHub 上的 `package.json` 检查更新，并且每隔 1 小时后台检查一次。版本号直接读取根目录 `package.json` 的 `version` 字段；发布新版本时，把 `version` 改成更高的语义化版本号，例如从 `0.1.1` 改为 `0.1.2`。
+
+升级下载地址配置在根目录 `package.json` 的 `codexSwitcherUpdate` 字段中：
+
+```json
+{
+  "version": "0.1.2",
+  "codexSwitcherUpdate": {
+    "notes": "本次更新说明",
+    "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.2",
+    "minimumVersion": "",
+    "downloads": {
+      "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.2/Codex-Switcher-0.1.2-arm64.dmg",
+      "darwin-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.2/Codex-Switcher-0.1.2-x64.dmg",
+      "win32-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.2/Codex-Switcher-Setup-0.1.2-x64.exe",
+      "linux-x64": ""
+    }
+  }
+}
+```
+
+`downloads` 的 key 使用 `${process.platform}-${process.arch}`：
+
+- Apple Silicon macOS：`darwin-arm64`
+- Intel macOS：`darwin-x64`
+- Windows x64：`win32-x64`
+- Linux x64：`linux-x64`
+
+如果当前平台没有配置下载地址，设置页会提示“当前平台还没有配置下载地址”。上传 release 产物后，需要确保 GitHub `main` 分支上的 `package.json` 已更新到对应版本和下载地址。
+
 ## 平台行为
 
 - macOS：图标显示在顶部菜单栏，点击托盘图标展示 profile 列表。
@@ -62,6 +94,8 @@ Windows 安装包支持自定义安装目录，并同时生成开始菜单和桌
 - macOS 和 Windows 关闭主窗口时会隐藏到托盘；需要退出应用时，请使用托盘菜单中的“退出”。
 - Windows 使用独立的最小化、最大化/还原和关闭按钮，窗口支持拖动调整大小。
 - 主窗口默认宽度和最小宽度为 900px，高度和最小高度为 640px；右侧配置内容会随窗口宽度自适应。
+
+
 
 ## Codex 配置目录
 

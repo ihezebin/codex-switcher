@@ -9,6 +9,8 @@ const {
   Tray,
 } = require("electron");
 const fs = require("node:fs/promises");
+const { createWriteStream } = require("node:fs");
+const { pipeline } = require("node:stream/promises");
 const path = require("node:path");
 const os = require("node:os");
 const TOML = require("@iarna/toml");
@@ -17,6 +19,8 @@ const PROFILE_SUFFIX = ".config.toml";
 const PROFILE_ORDER_FILE = ".codex-switcher-profile-order.json";
 const REPOSITORY_URL = "http://github.com/ihezebin/codex-switcher";
 const SUPPORT_URL = "https://ncm.hezebin.com";
+const UPDATE_MANIFEST_URL =
+  "https://raw.githubusercontent.com/ihezebin/codex-switcher/main/package.json";
 const TRAY_GUID = "6c4d8f7a-2b9e-4d3a-9f1c-8a7e5b2d6c40";
 const TRAY_ICON_PNG_1X =
   "iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAABmJLR0QA/wD/AP+gvaeTAAABSklEQVQ4jZXUv0pcURAG8N+udhapghjRViNYWEqardZ/+AC+g92+geQhsmKhjVj4BCEpFGzFdBFRWAuLQFCsLNRNcWfl7PHe3c3AgTMz33z3zpzznZp+q+EzpmJfZl3c4Xfs39kGbiI5yrrGehnJy3+Q9NYz1tJ2rocUnOO4InfVG8NCSfICvxJ/CysRuyjBz9fxMWvzD5rYT2JnWI5YMzCpTUIjY9/ENP6G3wnwDzxgFqt4TWoaOdE31PEziR1iDI/hn4bfriLqYAKt7A+3sZTFWoHt9IjqhtsZvoyA62utnbX2GG0cJZiTwOwOmlE+7O/xsdvI3asY9rj3etnDIr7iQxTORG4HTzjQr8UuhUirLuSK4jL24pUXksESOVbIY5B83iRCoeLnIQVVol3NRmMt2EcluUpJ8serhjl8Uhxxmb0qHrZLyUH9AzdfvpBi4lcvAAAAAElFTkSuQmCC";
@@ -29,6 +33,86 @@ const WINDOWS_TRAY_ICON_PNG_2X =
 let mainWindow = null;
 let tray = null;
 let isQuitting = false;
+let latestUpdateInfo = null;
+let downloadedUpdatePath = "";
+let mainLanguage = "zh";
+
+const mainTranslations = {
+  zh: {
+    invalidProfileName:
+      "配置名称只能包含字母、数字、点、短横线和下划线，且不能以符号开头。",
+    reservedConfigName: "config 是 Codex 主配置文件名，不能作为 profile 名称。",
+    noReadPermission: (file) => `没有权限读取 ${file}`,
+    invalidToml: (file, message) =>
+      `${path.basename(file)} 不是有效的 TOML：${message}`,
+    baseUrlRequired: "Base URL 不能为空",
+    checkUpdateFailed: (status) => `检查更新失败：HTTP ${status}`,
+    alreadyLatest: "当前已经是最新版本",
+    missingDownloadUrl: (platform) => `没有找到 ${platform} 平台的下载地址`,
+    downloadFailed: (status) => `下载失败：HTTP ${status}`,
+    loadModelsFailed: (status) => `模型列表加载失败：HTTP ${status}`,
+    connectionFailed: (status) => `连接测试失败：HTTP ${status}`,
+    invalidTomlSave: (message) => `无法保存：TOML 格式有误，${message}`,
+    duplicateProfile: (name) => `配置「${name}」已经存在，请换一个名称。`,
+    profileNotFound: (name) => `配置「${name}」不存在。`,
+    cannotOpenWindow: "无法打开窗口",
+    applyConfigFailed: "应用配置失败",
+    noProfiles: "暂无配置，请先创建 profile",
+    openApp: "打开 Codex Switcher",
+    profileList: "配置列表",
+    reloadProfiles: "重新加载配置",
+    quit: "退出",
+    installerNotDownloaded: "安装包尚未下载完成",
+    externalUrlDenied: "不允许打开该外部地址",
+    deleteProfileFailed: (file) => `配置文件删除失败：${file}`,
+    startupInitConfig: "正在初始化 Codex 配置目录…",
+    startupCreateTray: "正在创建系统托盘菜单…",
+    startupWaitConfig: "正在等待配置加载完成…",
+    codexHomeInaccessible: "无法访问 Codex 配置目录",
+    directory: (home) => `目录：${home}`,
+  },
+  en: {
+    invalidProfileName:
+      "Profile names can contain letters, numbers, dots, hyphens, and underscores, and cannot start with a symbol.",
+    reservedConfigName:
+      "config is the main Codex config file name and cannot be used as a profile name.",
+    noReadPermission: (file) => `No permission to read ${file}`,
+    invalidToml: (file, message) =>
+      `${path.basename(file)} is not valid TOML: ${message}`,
+    baseUrlRequired: "Base URL cannot be empty",
+    checkUpdateFailed: (status) => `Update check failed: HTTP ${status}`,
+    alreadyLatest: "You are already on the latest version",
+    missingDownloadUrl: (platform) =>
+      `No download URL was found for ${platform}`,
+    downloadFailed: (status) => `Download failed: HTTP ${status}`,
+    loadModelsFailed: (status) => `Model list load failed: HTTP ${status}`,
+    connectionFailed: (status) => `Connection test failed: HTTP ${status}`,
+    invalidTomlSave: (message) => `Cannot save: TOML is invalid, ${message}`,
+    duplicateProfile: (name) =>
+      `Profile "${name}" already exists. Choose another name.`,
+    profileNotFound: (name) => `Profile "${name}" does not exist.`,
+    cannotOpenWindow: "Cannot Open Window",
+    applyConfigFailed: "Apply Config Failed",
+    noProfiles: "No profiles yet. Create a profile first.",
+    openApp: "Open Codex Switcher",
+    profileList: "Profiles",
+    reloadProfiles: "Reload Profiles",
+    quit: "Quit",
+    installerNotDownloaded: "The installer has not finished downloading",
+    externalUrlDenied: "This external URL is not allowed",
+    deleteProfileFailed: (file) => `Failed to delete profile file: ${file}`,
+    startupInitConfig: "Initializing Codex config folder...",
+    startupCreateTray: "Creating system tray menu...",
+    startupWaitConfig: "Waiting for config loading to finish...",
+    codexHomeInaccessible: "Cannot Access Codex Config Folder",
+    directory: (home) => `Directory: ${home}`,
+  },
+};
+
+function t(key, ...args) {
+  const value = mainTranslations[mainLanguage][key];
+  return typeof value === "function" ? value(...args) : value;
+}
 
 app.setName("Codex Switcher");
 
@@ -46,12 +130,10 @@ function configPath() {
 
 function validateProfileName(name) {
   if (!name || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(name)) {
-    throw new Error(
-      "配置名称只能包含字母、数字、点、短横线和下划线，且不能以符号开头。",
-    );
+    throw new Error(t("invalidProfileName"));
   }
   if (name === "config") {
-    throw new Error("config 是 Codex 主配置文件名，不能作为 profile 名称。");
+    throw new Error(t("reservedConfigName"));
   }
 }
 
@@ -78,8 +160,8 @@ async function readTomlFile(file, fallback = {}) {
     return { value: TOML.parse(source), source };
   } catch (error) {
     if (error.code === "ENOENT") return { value: fallback, source: "" };
-    if (error.code === "EACCES") throw new Error(`没有权限读取 ${file}`);
-    throw new Error(`${path.basename(file)} 不是有效的 TOML：${error.message}`);
+    if (error.code === "EACCES") throw new Error(t("noReadPermission", file));
+    throw new Error(t("invalidToml", file, error.message));
   }
 }
 
@@ -284,6 +366,253 @@ function formToml(name, model, reviewModel, baseUrl, apiKey) {
   };
 }
 
+function normalizeBaseUrl(baseUrl) {
+  const trimmed = String(baseUrl || "").trim();
+  if (!trimmed) throw new Error(t("baseUrlRequired"));
+  return trimmed.replace(/\/+$/, "");
+}
+
+function endpointUrl(baseUrl, endpoint) {
+  const suffix = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  return `${normalizeBaseUrl(baseUrl)}${suffix}`;
+}
+
+async function readJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return { raw: text };
+  }
+}
+
+function responseErrorMessage(body, fallback) {
+  if (body && typeof body === "object") {
+    const error = body.error;
+    if (typeof error === "string") return error;
+    if (error && typeof error.message === "string") return error.message;
+    if (typeof body.message === "string") return body.message;
+    if (typeof body.err_msg === "string") return body.err_msg;
+    if (typeof body.raw === "string") return body.raw.slice(0, 300);
+  }
+  return fallback;
+}
+
+function parseVersion(version) {
+  return String(version || "")
+    .replace(/^v/i, "")
+    .split(".")
+    .map((part) => Number.parseInt(part, 10))
+    .map((part) => (Number.isFinite(part) ? part : 0));
+}
+
+function compareVersions(left, right) {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    const diff = (a[index] || 0) - (b[index] || 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+function updatePlatformKey() {
+  return `${process.platform}-${process.arch}`;
+}
+
+function normalizeUpdateInfo(manifest) {
+  const version = typeof manifest.version === "string" ? manifest.version : "";
+  const updateConfig =
+    manifest.codexSwitcherUpdate &&
+    typeof manifest.codexSwitcherUpdate === "object"
+      ? manifest.codexSwitcherUpdate
+      : {};
+  const downloads =
+    updateConfig.downloads && typeof updateConfig.downloads === "object"
+      ? updateConfig.downloads
+      : manifest.downloads && typeof manifest.downloads === "object"
+        ? manifest.downloads
+        : {};
+  const notes =
+    typeof updateConfig.notes === "string"
+      ? updateConfig.notes
+      : typeof manifest.notes === "string"
+        ? manifest.notes
+        : "";
+  const releaseUrl =
+    typeof updateConfig.releaseUrl === "string"
+      ? updateConfig.releaseUrl
+      : typeof manifest.releaseUrl === "string"
+        ? manifest.releaseUrl
+        : "";
+  const minimumVersion =
+    typeof updateConfig.minimumVersion === "string"
+      ? updateConfig.minimumVersion
+      : typeof manifest.minimumVersion === "string"
+        ? manifest.minimumVersion
+        : "";
+  const platformKey = updatePlatformKey();
+  const downloadUrl =
+    typeof downloads[platformKey] === "string" ? downloads[platformKey] : "";
+  const currentVersion = app.getVersion();
+  return {
+    currentVersion,
+    latestVersion: version,
+    hasUpdate:
+      Boolean(version) &&
+      compareVersions(version, currentVersion) > 0,
+    platformKey,
+    downloadUrl,
+    notes,
+    releaseUrl,
+    minimumVersion,
+    manifestUrl: UPDATE_MANIFEST_URL,
+    downloadedPath: downloadedUpdatePath,
+  };
+}
+
+async function checkForUpdates() {
+  const response = await fetch(UPDATE_MANIFEST_URL, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  const body = await readJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      responseErrorMessage(body, t("checkUpdateFailed", response.status)),
+    );
+  }
+  latestUpdateInfo = normalizeUpdateInfo(body);
+  return latestUpdateInfo;
+}
+
+function updateFileName(updateInfo) {
+  try {
+    const url = new URL(updateInfo.downloadUrl);
+    const basename = path.basename(url.pathname);
+    if (basename) return decodeURIComponent(basename);
+  } catch (_) {
+    // Fall through to deterministic fallback.
+  }
+  const extension = process.platform === "win32" ? "exe" : "dmg";
+  return `Codex-Switcher-${updateInfo.latestVersion}-${updateInfo.platformKey}.${extension}`;
+}
+
+async function downloadUpdate(updateInfo, webContents) {
+  if (!updateInfo?.hasUpdate) throw new Error(t("alreadyLatest"));
+  if (!updateInfo.downloadUrl) {
+    throw new Error(t("missingDownloadUrl", updateInfo.platformKey));
+  }
+  const response = await fetch(updateInfo.downloadUrl);
+  if (!response.ok || !response.body) {
+    const body = await readJsonResponse(response);
+    throw new Error(
+      responseErrorMessage(body, t("downloadFailed", response.status)),
+    );
+  }
+
+  const total = Number(response.headers.get("content-length") || 0);
+  let transferred = 0;
+  const updatesDir = path.join(app.getPath("userData"), "updates");
+  await fs.mkdir(updatesDir, { recursive: true });
+  const filePath = path.join(updatesDir, updateFileName(updateInfo));
+  const writer = createWriteStream(filePath);
+  const progressStream = new TransformStream({
+    transform(chunk, controller) {
+      transferred += chunk.byteLength;
+      const percent = total ? Math.round((transferred / total) * 100) : 0;
+      if (webContents && !webContents.isDestroyed()) {
+        webContents.send("codex:update-progress", {
+          percent,
+          transferred,
+          total,
+        });
+      }
+      controller.enqueue(chunk);
+    },
+  });
+  await pipeline(
+    response.body.pipeThrough(progressStream),
+    writer,
+  );
+  downloadedUpdatePath = filePath;
+  latestUpdateInfo = { ...updateInfo, downloadedPath: filePath };
+  if (webContents && !webContents.isDestroyed()) {
+    webContents.send("codex:update-progress", {
+      percent: 100,
+      transferred: total || transferred,
+      total: total || transferred,
+    });
+  }
+  return latestUpdateInfo;
+}
+
+async function loadModels({ baseUrl, apiKey }) {
+  const response = await fetch(endpointUrl(baseUrl, "/models"), {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${apiKey || ""}`,
+      Accept: "application/json",
+    },
+  });
+  const body = await readJsonResponse(response);
+  if (!response.ok) {
+    throw new Error(
+      responseErrorMessage(body, t("loadModelsFailed", response.status)),
+    );
+  }
+  const data = Array.isArray(body.data) ? body.data : [];
+  return data
+    .map((item) => (typeof item === "string" ? item : item?.id))
+    .filter((id) => typeof id === "string" && id.trim())
+    .map((id) => id.trim());
+}
+
+async function testConnection({ baseUrl, apiKey, model }) {
+  const headers = {
+    Authorization: `Bearer ${apiKey || ""}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  const responsesResult = await fetch(endpointUrl(baseUrl, "/responses"), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      input: "ping",
+      max_output_tokens: 8,
+    }),
+  });
+  if (responsesResult.ok) return { ok: true };
+
+  const responsesBody = await readJsonResponse(responsesResult);
+  if (![400, 404, 405].includes(responsesResult.status)) {
+    throw new Error(
+      responseErrorMessage(
+        responsesBody,
+        t("connectionFailed", responsesResult.status),
+      ),
+    );
+  }
+
+  const chatResult = await fetch(endpointUrl(baseUrl, "/chat/completions"), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: "ping" }],
+      max_tokens: 8,
+    }),
+  });
+  if (chatResult.ok) return { ok: true };
+  const chatBody = await readJsonResponse(chatResult);
+  throw new Error(
+    responseErrorMessage(chatBody, t("connectionFailed", chatResult.status)),
+  );
+}
+
 async function saveProfile({
   name,
   model,
@@ -308,7 +637,7 @@ async function saveProfile({
   try {
     TOML.parse(next);
   } catch (error) {
-    throw new Error(`无法保存：TOML 格式有误，${error.message}`);
+    throw new Error(t("invalidTomlSave", error.message));
   }
   await ensureCodexHome();
   await atomicWrite(
@@ -326,15 +655,58 @@ async function createProfile(payload) {
       (profile) => profile.name.toLowerCase() === payload.name.toLowerCase(),
     )
   ) {
-    throw new Error(`配置「${payload.name}」已经存在，请换一个名称。`);
+    throw new Error(t("duplicateProfile", payload.name));
   }
   try {
     await fs.access(profilePath(payload.name));
-    throw new Error(`配置「${payload.name}」已经存在，请换一个名称。`);
+    throw new Error(t("duplicateProfile", payload.name));
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
   return saveProfile(payload);
+}
+
+async function deleteProfile(name) {
+  validateProfileName(name);
+  const file = profilePath(name);
+  try {
+    await fs.unlink(file);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (await hasFile(file)) {
+    throw new Error(t("deleteProfileFailed", file));
+  }
+  const home = await ensureCodexHome();
+  const previousOrder = await readProfileOrder(home);
+  const nextOrder = previousOrder.filter((item) => item !== name);
+  if (nextOrder.length !== previousOrder.length)
+    await writeProfileOrder(home, nextOrder);
+  return listProfiles();
+}
+
+async function renameProfile(oldName, newName) {
+  validateProfileName(oldName);
+  validateProfileName(newName);
+  if (oldName === newName) return listProfiles();
+  const oldFile = profilePath(oldName);
+  const newFile = profilePath(newName);
+  if (!(await hasFile(oldFile))) {
+    throw new Error(t("profileNotFound", oldName));
+  }
+  if (await hasFile(newFile)) {
+    throw new Error(t("duplicateProfile", newName));
+  }
+  await fs.rename(oldFile, newFile);
+  const home = await ensureCodexHome();
+  const previousOrder = await readProfileOrder(home);
+  const nextOrder = previousOrder.map((item) =>
+    item === oldName ? newName : item,
+  );
+  if (JSON.stringify(previousOrder) !== JSON.stringify(nextOrder)) {
+    await writeProfileOrder(home, nextOrder);
+  }
+  return listProfiles();
 }
 
 function mergeProfileIntoConfig(base, profile) {
@@ -402,7 +774,7 @@ function createTrayIcon() {
 function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) {
     createWindow().catch((error) =>
-      dialog.showErrorBox("无法打开窗口", error.message),
+      dialog.showErrorBox(t("cannotOpenWindow"), error.message),
     );
     return;
   }
@@ -424,7 +796,7 @@ async function switchFromTray(name) {
       mainWindow.webContents.send("codex:state-changed", state);
     showMainWindow();
   } catch (error) {
-    dialog.showErrorBox("应用配置失败", error.message);
+    dialog.showErrorBox(t("applyConfigFailed"), error.message);
   }
 }
 
@@ -438,16 +810,16 @@ async function refreshTrayMenu(state) {
         checked: Boolean(profile.active),
         click: () => switchFromTray(profile.name),
       }))
-    : [{ label: "暂无配置，请先创建 profile", enabled: false }];
+    : [{ label: t("noProfiles"), enabled: false }];
   const menu = Menu.buildFromTemplate([
-    { label: "打开 Codex Switcher", click: showMainWindow },
+    { label: t("openApp"), click: showMainWindow },
     { type: "separator" },
-    { label: "配置列表", enabled: false },
+    { label: t("profileList"), enabled: false },
     ...profileItems,
     { type: "separator" },
-    { label: "重新加载配置", click: () => refreshTrayMenu() },
+    { label: t("reloadProfiles"), click: () => refreshTrayMenu() },
     {
-      label: "退出",
+      label: t("quit"),
       click: () => {
         isQuitting = true;
         app.quit();
@@ -502,10 +874,27 @@ async function createWindow() {
       preload: path.join(__dirname, "../preload/index.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      devTools: !app.isPackaged,
     },
   };
   const window = new BrowserWindow(windowOptions);
   mainWindow = window;
+
+  if (app.isPackaged) {
+    window.webContents.on("before-input-event", (event, input) => {
+      const key = input.key.toLowerCase();
+      const opensDevTools =
+        input.key === "F12" ||
+        ((input.control || input.meta) &&
+          input.shift &&
+          ["i", "j", "c"].includes(key)) ||
+        (input.meta && input.alt && key === "i");
+      if (opensDevTools) event.preventDefault();
+    });
+    window.webContents.on("devtools-opened", () => {
+      window.webContents.closeDevTools();
+    });
+  }
 
   const showLoadedWindow = () => {
     if (!window.isDestroyed() && !window.isVisible()) window.show();
@@ -542,10 +931,37 @@ ipcMain.handle("codex:create-profile", async (_, payload) => {
   await refreshTrayMenu();
   return saved;
 });
+ipcMain.handle("codex:delete-profile", async (_, name) => {
+  const state = await deleteProfile(name);
+  await refreshTrayMenu(state);
+  return state;
+});
+ipcMain.handle("codex:rename-profile", async (_, payload) => {
+  const state = await renameProfile(payload.oldName, payload.newName);
+  await refreshTrayMenu(state);
+  return state;
+});
 ipcMain.handle("codex:apply-profile", async (_, name) => {
   const state = await applyProfile(name);
   await refreshTrayMenu(state);
   return state;
+});
+ipcMain.handle("codex:load-models", (_, payload) => loadModels(payload));
+ipcMain.handle("codex:test-connection", (_, payload) => testConnection(payload));
+ipcMain.on("codex:set-language", (_, language) => {
+  mainLanguage = language === "en" ? "en" : "zh";
+  refreshTrayMenu().catch(() => {});
+});
+ipcMain.handle("codex:check-updates", () => checkForUpdates());
+ipcMain.handle("codex:download-update", async (event) => {
+  const updateInfo = latestUpdateInfo || (await checkForUpdates());
+  return downloadUpdate(updateInfo, event.sender);
+});
+ipcMain.handle("codex:install-update", async () => {
+  if (!downloadedUpdatePath) throw new Error(t("installerNotDownloaded"));
+  const error = await shell.openPath(downloadedUpdatePath);
+  if (error) throw new Error(error);
+  return true;
 });
 ipcMain.handle("codex:open-folder", async () => {
   await ensureCodexHome();
@@ -553,7 +969,7 @@ ipcMain.handle("codex:open-folder", async () => {
 });
 ipcMain.handle("codex:open-external", async (_, url) => {
   if (![REPOSITORY_URL, SUPPORT_URL].includes(url))
-    throw new Error("不允许打开该外部地址");
+    throw new Error(t("externalUrlDenied"));
   return shell.openExternal(url);
 });
 ipcMain.on("window:minimize", (event) => {
@@ -580,17 +996,17 @@ app.whenReady().then(async () => {
 
     // Tray creation and profile scanning are intentionally deferred until the
     // window is already visible, so first launch is not a blank native window.
-    sendStartupStatus("正在初始化 Codex 配置目录…");
+    sendStartupStatus(t("startupInitConfig"));
     await ensureCodexHome();
-    sendStartupStatus("正在创建系统托盘菜单…");
+    sendStartupStatus(t("startupCreateTray"));
     await createTray();
-    sendStartupStatus("正在等待配置加载完成…");
+    sendStartupStatus(t("startupWaitConfig"));
   } catch (error) {
     await dialog.showMessageBox({
       type: "error",
-      title: "无法访问 Codex 配置目录",
+      title: t("codexHomeInaccessible"),
       message: error.message,
-      detail: `目录：${codexHome()}`,
+      detail: t("directory", codexHome()),
     });
     app.quit();
   }
