@@ -5,13 +5,13 @@
   "description": "A desktop profile switcher for Codex configuration",
   "main": "dist-electron/main/index.js",
   "codexSwitcherUpdate": {
-    "notes": "",
-    "releaseUrl": "",
+    "notes": "本次更新说明",
+    "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.1",
     "minimumVersion": "",
     "downloads": {
-      "darwin-arm64": "",
-      "darwin-x64": "",
-      "win32-x64": "",
+      "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.1/Codex-Switcher-0.1.1-arm64.dmg",
+      "darwin-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.1/Codex-Switcher-0.1.1-x64.dmg",
+      "win32-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.1/Codex-Switcher-Setup-0.1.1-x64.exe",
       "linux-x64": ""
     }
   },
