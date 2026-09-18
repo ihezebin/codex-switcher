@@ -1,18 +1,18 @@
 {
   "name": "codex-switcher",
-  "version": "0.2.0",
+  "version": "0.1.2",
   "private": true,
   "description": "A desktop profile switcher for Codex configuration",
   "main": "dist-electron/main/index.js",
   "codexSwitcherUpdate": {
-    "notes": "本次更新说明",
-    "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.1",
+    "notes": "fix updater and add i18n",
+    "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.2",
     "minimumVersion": "",
     "proxyBaseUrl": "https://ghfast.top/",
     "downloads": {
-      "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.1/Codex.Switcher-0.1.1-mac-arm64.dmg",
-      "darwin-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.1/Codex.Switcher-0.1.1-mac-x64.dmg",
-      "win32-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.1/Codex.Switcher-0.1.1-win-x64.exe",
+      "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.2/Codex.Switcher-0.1.2-mac-arm64.dmg",
+      "darwin-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.2/Codex.Switcher-0.1.2-mac-x64.dmg",
+      "win32-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.2/Codex.Switcher-0.1.2-win-x64.exe",
       "linux-x64": ""
     }
   },

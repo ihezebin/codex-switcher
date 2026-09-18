@@ -535,12 +535,13 @@ function proxiedUpdateDownloadUrl(downloadUrl, proxyBaseUrl) {
 }
 
 function updateDownloadCandidates(updateInfo) {
-  const candidates = [updateInfo.downloadUrl];
   const proxyUrl = proxiedUpdateDownloadUrl(
     updateInfo.downloadUrl,
     updateInfo.proxyBaseUrl,
   );
-  if (proxyUrl && !candidates.includes(proxyUrl)) candidates.push(proxyUrl);
+  const candidates = proxyUrl
+    ? [proxyUrl, updateInfo.downloadUrl]
+    : [updateInfo.downloadUrl];
   return candidates;
 }
 
@@ -624,7 +625,9 @@ async function openUpdateDownload(urls) {
 }
 
 function downloadPercent(transferred, total) {
-  if (total) return Math.min(99, Math.round((transferred / total) * 100));
+  if (total) {
+    return Math.min(99, Math.max(1, Math.round((transferred / total) * 100)));
+  }
   const megabytes = transferred / (1024 * 1024);
   return Math.min(95, Math.max(1, Math.floor(megabytes * 6)));
 }
@@ -633,13 +636,6 @@ async function downloadUpdate(updateInfo, webContents) {
   if (!updateInfo?.hasUpdate) throw new Error(t("alreadyLatest"));
   if (!updateInfo.downloadUrl) {
     throw new Error(t("missingDownloadUrl", updateInfo.platformKey));
-  }
-  if (webContents && !webContents.isDestroyed()) {
-    webContents.send("codex:update-progress", {
-      percent: 1,
-      transferred: 0,
-      total: 0,
-    });
   }
   const response = await openUpdateDownload(updateDownloadCandidates(updateInfo));
   const total = Number(response.headers["content-length"] || 0);
@@ -1094,6 +1090,10 @@ ipcMain.handle("codex:install-update", async () => {
   if (!downloadedUpdatePath) throw new Error(t("installerNotDownloaded"));
   const error = await shell.openPath(downloadedUpdatePath);
   if (error) throw new Error(error);
+  setTimeout(() => {
+    isQuitting = true;
+    app.quit();
+  }, 300);
   return true;
 });
 ipcMain.handle("codex:open-folder", async () => {

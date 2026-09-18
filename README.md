@@ -78,7 +78,7 @@ Windows 安装包支持自定义安装目录，并同时生成开始菜单和桌
 }
 ```
 
-`proxyBaseUrl` 用于 GitHub release 下载失败后的备用代理。默认值是 `https://ghfast.top/`，下载时会先尝试原始 `downloads` 地址，失败后再尝试代理地址，例如 `https://ghfast.top/https://github.com/...`。如果不想使用代理，可以把 `proxyBaseUrl` 配成空字符串。
+`proxyBaseUrl` 用于 GitHub release 下载代理。默认值是 `https://ghfast.top/`，配置后会先尝试代理地址，例如 `https://ghfast.top/https://github.com/...`，代理失败后再回退原始 `downloads` 地址。如果不想使用代理，可以把 `proxyBaseUrl` 配成空字符串。
 
 `downloads` 的 key 使用 `${process.platform}-${process.arch}`：
 

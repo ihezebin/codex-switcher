@@ -632,7 +632,6 @@ function App() {
     try {
       setDownloadingUpdate(true);
       setHasStartedUpdateDownload(true);
-      setUpdateProgress(0);
       const info = await window.codexAPI.downloadUpdate();
       setUpdateInfo(info);
       setUpdateDownloaded(true);
