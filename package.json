@@ -1,6 +1,6 @@
 {
   "name": "codex-switcher",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A desktop profile switcher for Codex configuration",
   "main": "dist-electron/main/index.js",
