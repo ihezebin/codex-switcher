@@ -5,11 +5,13 @@ const {
   ipcMain,
   Menu,
   nativeImage,
+  net,
   shell,
   Tray,
 } = require("electron");
 const fs = require("node:fs/promises");
 const { createWriteStream } = require("node:fs");
+const { Transform } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
 const path = require("node:path");
 const os = require("node:os");
@@ -21,6 +23,7 @@ const REPOSITORY_URL = "http://github.com/ihezebin/codex-switcher";
 const SUPPORT_URL = "https://ncm.hezebin.com";
 const UPDATE_MANIFEST_URL =
   "https://raw.githubusercontent.com/ihezebin/codex-switcher/main/package.json";
+const DEFAULT_UPDATE_PROXY_BASE_URL = "https://ghfast.top/";
 const TRAY_GUID = "6c4d8f7a-2b9e-4d3a-9f1c-8a7e5b2d6c40";
 const TRAY_ICON_PNG_1X =
   "iVBORw0KGgoAAAANSUhEUgAAABIAAAASCAYAAABWzo5XAAAABmJLR0QA/wD/AP+gvaeTAAABSklEQVQ4jZXUv0pcURAG8N+udhapghjRViNYWEqardZ/+AC+g92+geQhsmKhjVj4BCEpFGzFdBFRWAuLQFCsLNRNcWfl7PHe3c3AgTMz33z3zpzznZp+q+EzpmJfZl3c4Xfs39kGbiI5yrrGehnJy3+Q9NYz1tJ2rocUnOO4InfVG8NCSfICvxJ/CysRuyjBz9fxMWvzD5rYT2JnWI5YMzCpTUIjY9/ENP6G3wnwDzxgFqt4TWoaOdE31PEziR1iDI/hn4bfriLqYAKt7A+3sZTFWoHt9IjqhtsZvoyA62utnbX2GG0cJZiTwOwOmlE+7O/xsdvI3asY9rj3etnDIr7iQxTORG4HTzjQr8UuhUirLuSK4jL24pUXksESOVbIY5B83iRCoeLnIQVVol3NRmMt2EcluUpJ8serhjl8Uhxxmb0qHrZLyUH9AzdfvpBi4lcvAAAAAElFTkSuQmCC";
@@ -456,6 +459,12 @@ function normalizeUpdateInfo(manifest) {
       : typeof manifest.minimumVersion === "string"
         ? manifest.minimumVersion
         : "";
+  const proxyBaseUrl =
+    typeof updateConfig.proxyBaseUrl === "string"
+      ? updateConfig.proxyBaseUrl
+      : typeof manifest.proxyBaseUrl === "string"
+        ? manifest.proxyBaseUrl
+        : DEFAULT_UPDATE_PROXY_BASE_URL;
   const platformKey = updatePlatformKey();
   const downloadUrl =
     typeof downloads[platformKey] === "string" ? downloads[platformKey] : "";
@@ -471,6 +480,7 @@ function normalizeUpdateInfo(manifest) {
     notes,
     releaseUrl,
     minimumVersion,
+    proxyBaseUrl,
     manifestUrl: UPDATE_MANIFEST_URL,
     downloadedPath: downloadedUpdatePath,
   };
@@ -512,20 +522,102 @@ function updateDownloadErrorMessage(error) {
   );
 }
 
-async function fetchUpdateDownload(url) {
+function normalizeProxyBaseUrl(proxyBaseUrl) {
+  const value = String(proxyBaseUrl || "").trim();
+  if (!value) return "";
+  return value.endsWith("/") ? value : `${value}/`;
+}
+
+function proxiedUpdateDownloadUrl(downloadUrl, proxyBaseUrl) {
+  const proxy = normalizeProxyBaseUrl(proxyBaseUrl);
+  if (!proxy || !/^https:\/\/github\.com\//i.test(downloadUrl)) return "";
+  return `${proxy}${downloadUrl}`;
+}
+
+function updateDownloadCandidates(updateInfo) {
+  const candidates = [updateInfo.downloadUrl];
+  const proxyUrl = proxiedUpdateDownloadUrl(
+    updateInfo.downloadUrl,
+    updateInfo.proxyBaseUrl,
+  );
+  if (proxyUrl && !candidates.includes(proxyUrl)) candidates.push(proxyUrl);
+  return candidates;
+}
+
+function readResponseSnippet(response) {
+  return new Promise((resolve) => {
+    let body = "";
+    response.setEncoding("utf8");
+    response.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > 500) response.destroy();
+    });
+    response.on("end", () => resolve(body.trim()));
+    response.on("error", () => resolve(body.trim()));
+  });
+}
+
+function requestUpdateDownload(url) {
+  return new Promise((resolve, reject) => {
+    let redirectCount = 0;
+    const request = net.request({
+      method: "GET",
+      url,
+      redirect: "manual",
+    });
+    const timeout = setTimeout(() => {
+      request.abort();
+      reject(new Error("request timeout"));
+    }, 30_000);
+
+    request.setHeader("User-Agent", "Codex-Switcher");
+    request.setHeader("Accept", "application/octet-stream,*/*");
+
+    request.on("redirect", () => {
+      redirectCount += 1;
+      if (redirectCount >= 8) {
+        clearTimeout(timeout);
+        request.abort();
+        reject(new Error("too many redirects"));
+        return;
+      }
+      request.followRedirect();
+    });
+    request.on("response", async (response) => {
+      clearTimeout(timeout);
+      const { statusCode = 0 } = response;
+      if (statusCode < 200 || statusCode >= 300) {
+        const snippet = await readResponseSnippet(response);
+        reject(
+          new Error(
+            snippet
+              ? `${t("downloadFailed", statusCode)}: ${snippet}`
+              : t("downloadFailed", statusCode),
+          ),
+        );
+        return;
+      }
+      resolve(response);
+    });
+    request.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    request.end();
+  });
+}
+
+async function openUpdateDownload(urls) {
   let lastError;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await fetch(url, {
-        redirect: "follow",
-        headers: {
-          "User-Agent": "Codex-Switcher",
-          Accept: "application/octet-stream,*/*",
-        },
-      });
-    } catch (error) {
-      lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+  const candidates = Array.isArray(urls) ? urls : [urls];
+  for (const url of candidates.filter(Boolean)) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await requestUpdateDownload(url);
+      } catch (error) {
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
     }
   }
   throw new Error(t("downloadNetworkFailed", updateDownloadErrorMessage(lastError)));
@@ -549,22 +641,15 @@ async function downloadUpdate(updateInfo, webContents) {
       total: 0,
     });
   }
-  const response = await fetchUpdateDownload(updateInfo.downloadUrl);
-  if (!response.ok || !response.body) {
-    const body = await readJsonResponse(response);
-    throw new Error(
-      responseErrorMessage(body, t("downloadFailed", response.status)),
-    );
-  }
-
-  const total = Number(response.headers.get("content-length") || 0);
+  const response = await openUpdateDownload(updateDownloadCandidates(updateInfo));
+  const total = Number(response.headers["content-length"] || 0);
   let transferred = 0;
   const updatesDir = path.join(app.getPath("userData"), "updates");
   await fs.mkdir(updatesDir, { recursive: true });
   const filePath = path.join(updatesDir, updateFileName(updateInfo));
   const writer = createWriteStream(filePath);
-  const progressStream = new TransformStream({
-    transform(chunk, controller) {
+  const progressStream = new Transform({
+    transform(chunk, _encoding, callback) {
       transferred += chunk.byteLength;
       const percent = downloadPercent(transferred, total);
       if (webContents && !webContents.isDestroyed()) {
@@ -574,11 +659,11 @@ async function downloadUpdate(updateInfo, webContents) {
           total,
         });
       }
-      controller.enqueue(chunk);
+      callback(null, chunk);
     },
   });
   try {
-    await pipeline(response.body.pipeThrough(progressStream), writer);
+    await pipeline(response, progressStream, writer);
   } catch (error) {
     try {
       await fs.unlink(filePath);

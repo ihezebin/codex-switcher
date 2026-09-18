@@ -8,6 +8,7 @@
     "notes": "本次更新说明",
     "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.1",
     "minimumVersion": "",
+    "proxyBaseUrl": "https://ghfast.top/",
     "downloads": {
       "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.1/Codex.Switcher-0.1.1-mac-arm64.dmg",
       "darwin-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.1/Codex.Switcher-0.1.1-mac-x64.dmg",

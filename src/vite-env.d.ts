@@ -22,6 +22,7 @@ interface CodexUpdateInfo {
   notes: string;
   releaseUrl: string;
   minimumVersion: string;
+  proxyBaseUrl?: string;
   manifestUrl: string;
   downloadedPath?: string;
 }

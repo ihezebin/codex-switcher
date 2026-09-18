@@ -613,6 +613,7 @@ function App() {
 
   const handleOpenUpdate = async () => {
     setSettingsOpen(false);
+    setUpdateOpen(true);
     setCheckingUpdate(true);
     try {
       const info = await window.codexAPI.checkUpdates();
@@ -620,7 +621,6 @@ function App() {
       setUpdateDownloaded(Boolean(info.downloadedPath));
       setHasStartedUpdateDownload(Boolean(info.downloadedPath));
       setUpdateProgress(info.downloadedPath ? 100 : 0);
-      setUpdateOpen(true);
     } catch (error) {
       messageApi.error(`${t.checkUpdateFailed}: ${(error as Error).message}`);
     } finally {
@@ -763,7 +763,6 @@ function App() {
           danger
           className="settings-about-button settings-upgrade-button"
           icon={<DownloadOutlined />}
-          loading={checkingUpdate}
           onClick={handleOpenUpdate}
         >
           {t.upgrade}
@@ -1331,7 +1330,7 @@ function App() {
                   type="primary"
                   icon={<DownloadOutlined />}
                   loading={downloadingUpdate}
-                  disabled={!updateInfo?.downloadUrl}
+                  disabled={checkingUpdate || !updateInfo?.downloadUrl}
                   onClick={handleDownloadUpdate}
                 >
                   {t.downloadUpdate}
