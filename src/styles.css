@@ -597,6 +597,14 @@ html[data-theme="dark"] .settings-row-label {
   color: #1677ff !important;
   background: #eff6ff !important;
 }
+.settings-upgrade-button,
+.settings-upgrade-button:hover {
+  justify-content: center;
+  color: #ffffff !important;
+}
+.settings-upgrade-button:hover {
+  background: #ff7875 !important;
+}
 
 .main-content {
   position: relative;
@@ -1092,6 +1100,13 @@ html[data-theme="dark"] .connection-latency.latency-bad {
   gap: 18px;
   color: #475569;
   font-size: 13px;
+}
+.update-value-tag {
+  margin-inline-end: 0;
+  font-family:
+    "Xiaolai SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    sans-serif;
+  font-size: 12px;
 }
 .update-notes {
   padding: 10px 12px;

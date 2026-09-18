@@ -50,6 +50,7 @@ const mainTranslations = {
     alreadyLatest: "当前已经是最新版本",
     missingDownloadUrl: (platform) => `没有找到 ${platform} 平台的下载地址`,
     downloadFailed: (status) => `下载失败：HTTP ${status}`,
+    downloadNetworkFailed: (message) => `下载网络连接失败：${message}`,
     loadModelsFailed: (status) => `模型列表加载失败：HTTP ${status}`,
     connectionFailed: (status) => `连接测试失败：HTTP ${status}`,
     invalidTomlSave: (message) => `无法保存：TOML 格式有误，${message}`,
@@ -85,6 +86,8 @@ const mainTranslations = {
     missingDownloadUrl: (platform) =>
       `No download URL was found for ${platform}`,
     downloadFailed: (status) => `Download failed: HTTP ${status}`,
+    downloadNetworkFailed: (message) =>
+      `Download network connection failed: ${message}`,
     loadModelsFailed: (status) => `Model list load failed: HTTP ${status}`,
     connectionFailed: (status) => `Connection test failed: HTTP ${status}`,
     invalidTomlSave: (message) => `Cannot save: TOML is invalid, ${message}`,
@@ -500,12 +503,53 @@ function updateFileName(updateInfo) {
   return `Codex-Switcher-${updateInfo.latestVersion}-${updateInfo.platformKey}.${extension}`;
 }
 
+function updateDownloadErrorMessage(error) {
+  return (
+    error?.cause?.message ||
+    error?.cause?.code ||
+    error?.message ||
+    "unknown network error"
+  );
+}
+
+async function fetchUpdateDownload(url) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await fetch(url, {
+        redirect: "follow",
+        headers: {
+          "User-Agent": "Codex-Switcher",
+          Accept: "application/octet-stream,*/*",
+        },
+      });
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+  throw new Error(t("downloadNetworkFailed", updateDownloadErrorMessage(lastError)));
+}
+
+function downloadPercent(transferred, total) {
+  if (total) return Math.min(99, Math.round((transferred / total) * 100));
+  const megabytes = transferred / (1024 * 1024);
+  return Math.min(95, Math.max(1, Math.floor(megabytes * 6)));
+}
+
 async function downloadUpdate(updateInfo, webContents) {
   if (!updateInfo?.hasUpdate) throw new Error(t("alreadyLatest"));
   if (!updateInfo.downloadUrl) {
     throw new Error(t("missingDownloadUrl", updateInfo.platformKey));
   }
-  const response = await fetch(updateInfo.downloadUrl);
+  if (webContents && !webContents.isDestroyed()) {
+    webContents.send("codex:update-progress", {
+      percent: 1,
+      transferred: 0,
+      total: 0,
+    });
+  }
+  const response = await fetchUpdateDownload(updateInfo.downloadUrl);
   if (!response.ok || !response.body) {
     const body = await readJsonResponse(response);
     throw new Error(
@@ -522,7 +566,7 @@ async function downloadUpdate(updateInfo, webContents) {
   const progressStream = new TransformStream({
     transform(chunk, controller) {
       transferred += chunk.byteLength;
-      const percent = total ? Math.round((transferred / total) * 100) : 0;
+      const percent = downloadPercent(transferred, total);
       if (webContents && !webContents.isDestroyed()) {
         webContents.send("codex:update-progress", {
           percent,
@@ -533,10 +577,14 @@ async function downloadUpdate(updateInfo, webContents) {
       controller.enqueue(chunk);
     },
   });
-  await pipeline(
-    response.body.pipeThrough(progressStream),
-    writer,
-  );
+  try {
+    await pipeline(response.body.pipeThrough(progressStream), writer);
+  } catch (error) {
+    try {
+      await fs.unlink(filePath);
+    } catch (_) {}
+    throw new Error(t("downloadNetworkFailed", updateDownloadErrorMessage(error)));
+  }
   downloadedUpdatePath = filePath;
   latestUpdateInfo = { ...updateInfo, downloadedPath: filePath };
   if (webContents && !webContents.isDestroyed()) {

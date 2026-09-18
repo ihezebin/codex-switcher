@@ -28,7 +28,7 @@ export const translations = {
   about: { zh: "关于 Codex Switcher", en: "About Codex Switcher" },
   upgrade: { zh: "升级版本", en: "Upgrade" },
   settings: { zh: "设置", en: "Settings" },
-  newVersion: { zh: "新版本", en: "New" },
+  newVersion: { zh: "升级新版本", en: "Upgrade" },
   profileList: { zh: "配置列表", en: "Profiles" },
   refreshProfiles: { zh: "刷新配置列表", en: "Refresh profiles" },
   refreshProfilesSuccess: {

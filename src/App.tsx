@@ -123,6 +123,8 @@ function App() {
   const [updateOpen, setUpdateOpen] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [downloadingUpdate, setDownloadingUpdate] = useState(false);
+  const [hasStartedUpdateDownload, setHasStartedUpdateDownload] =
+    useState(false);
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -616,6 +618,7 @@ function App() {
       const info = await window.codexAPI.checkUpdates();
       setUpdateInfo(info);
       setUpdateDownloaded(Boolean(info.downloadedPath));
+      setHasStartedUpdateDownload(Boolean(info.downloadedPath));
       setUpdateProgress(info.downloadedPath ? 100 : 0);
       setUpdateOpen(true);
     } catch (error) {
@@ -628,6 +631,7 @@ function App() {
   const handleDownloadUpdate = async () => {
     try {
       setDownloadingUpdate(true);
+      setHasStartedUpdateDownload(true);
       setUpdateProgress(0);
       const info = await window.codexAPI.downloadUpdate();
       setUpdateInfo(info);
@@ -755,8 +759,9 @@ function App() {
       </Button>
       {updateInfo?.hasUpdate && (
         <Button
-          type="text"
-          className="settings-about-button"
+          type="primary"
+          danger
+          className="settings-about-button settings-upgrade-button"
           icon={<DownloadOutlined />}
           loading={checkingUpdate}
           onClick={handleOpenUpdate}
@@ -771,7 +776,7 @@ function App() {
     <Button type="text" className={className} icon={<SettingOutlined />}>
       <span>{t.settings}</span>
       {updateInfo?.hasUpdate && (
-        <Tag color="processing" className="update-tag">
+        <Tag color="red" className="update-tag">
           {t.newVersion}
         </Tag>
       )}
@@ -1303,9 +1308,8 @@ function App() {
           open={updateOpen}
           title={t.upgrade}
           centered
-          onCancel={() => {
-            if (!downloadingUpdate) setUpdateOpen(false);
-          }}
+          closable={false}
+          maskClosable={false}
           footer={
             <Space>
               <Button
@@ -1339,15 +1343,21 @@ function App() {
           <div className="update-modal">
             <div className="update-version-row">
               <span>{t.currentVersion}</span>
-              <Text code>v{updateInfo?.currentVersion || APP_VERSION}</Text>
+              <Tag className="update-value-tag">
+                v{updateInfo?.currentVersion || APP_VERSION}
+              </Tag>
             </div>
             <div className="update-version-row">
               <span>{t.latestVersion}</span>
-              <Text code>v{updateInfo?.latestVersion || "-"}</Text>
+              <Tag color="red" className="update-value-tag">
+                v{updateInfo?.latestVersion || "-"}
+              </Tag>
             </div>
             <div className="update-version-row">
               <span>{t.currentPlatform}</span>
-              <Text code>{updateInfo?.platformKey || "-"}</Text>
+              <Tag className="update-value-tag">
+                {updateInfo?.platformKey || "-"}
+              </Tag>
             </div>
             {updateInfo?.notes && (
               <div className="update-notes">{updateInfo.notes}</div>
@@ -1360,10 +1370,12 @@ function App() {
                 description={t.noDownloadUrlDesc}
               />
             )}
-            <Progress
-              percent={updateProgress}
-              status={downloadingUpdate ? "active" : undefined}
-            />
+            {hasStartedUpdateDownload && (
+              <Progress
+                percent={updateProgress}
+                status={downloadingUpdate ? "active" : undefined}
+              />
+            )}
             {updateDownloaded && (
               <Alert
                 type="success"
