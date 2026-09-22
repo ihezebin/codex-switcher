@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="500" viewBox="0 0 660 500">
+  <defs>
+    <linearGradient id="background" x1="48" y1="16" x2="610" y2="486" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFF"/>
+      <stop offset="0.55" stop-color="#EEF5FF"/>
+      <stop offset="1" stop-color="#F8FBFF"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="270" y1="36" x2="382" y2="146" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4096FF"/>
+      <stop offset="1" stop-color="#0958D9"/>
+    </linearGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#1D4ED8" flood-opacity="0.18"/>
+    </filter>
+    <filter id="softShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#64748B" flood-opacity="0.13"/>
+    </filter>
+  </defs>
+
+  <rect width="660" height="500" fill="url(#background)"/>
+  <circle cx="42" cy="26" r="112" fill="#DCEBFF" opacity="0.65"/>
+  <circle cx="628" cy="112" r="132" fill="#E2EFFF" opacity="0.72"/>
+  <circle cx="594" cy="476" r="156" fill="#EAF3FF" opacity="0.72"/>
+  <path d="M0 274C138 236 226 298 351 270C463 245 535 201 660 237V500H0V274Z" fill="#FFFFFF" opacity="0.72"/>
+
+  <g filter="url(#shadow)">
+    <rect x="294" y="34" width="72" height="72" rx="19" fill="url(#brand)"/>
+    <path d="M318 55L307.5 70L318 85M342 55L352.5 70L342 85M334.5 50.5L325.5 89.5" fill="none" stroke="#FFFFFF" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="330" y="139" text-anchor="middle" fill="#172033" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="27" font-weight="700">Codex Switcher</text>
+  <text x="330" y="169" text-anchor="middle" fill="#64748B" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14">轻松管理 Codex 配置、会话与用量统计</text>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12" font-weight="600" text-anchor="middle">
+    <g filter="url(#softShadow)">
+      <rect x="153" y="194" width="106" height="34" rx="17" fill="#FFFFFF"/>
+      <rect x="277" y="194" width="106" height="34" rx="17" fill="#FFFFFF"/>
+      <rect x="401" y="194" width="106" height="34" rx="17" fill="#FFFFFF"/>
+    </g>
+    <circle cx="178" cy="211" r="5" fill="#1677FF"/>
+    <circle cx="302" cy="211" r="5" fill="#13A8A8"/>
+    <circle cx="426" cy="211" r="5" fill="#FA8C16"/>
+    <text x="218" y="215" fill="#334155">配置切换</text>
+    <text x="342" y="215" fill="#334155">会话管理</text>
+    <text x="466" y="215" fill="#334155">用量统计</text>
+  </g>
+
+  <text x="330" y="274" text-anchor="middle" fill="#475569" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="14" font-weight="600">将 Codex Switcher 拖到 Applications 文件夹</text>
+
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M283 350H377" stroke="#B6C7DF" stroke-width="3" stroke-dasharray="5 8"/>
+    <path d="M365 338L378 350L365 362" stroke="#1677FF" stroke-width="4"/>
+  </g>
+
+  <text x="330" y="464" text-anchor="middle" fill="#94A3B8" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="11">拖动完成后，即可从“应用程序”中打开</text>
+</svg>

@@ -237,7 +237,7 @@ function App() {
   );
 
   useEffect(() => {
-    refresh()
+    Promise.all([refresh(), window.codexAPI?.prepareSessions?.()])
       .catch((error: Error) => messageApi.error(error.message))
       .finally(() => setLoading(false));
   }, [messageApi, refresh]);

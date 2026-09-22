@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Empty, Input, List, Popconfirm, Skeleton, Tag, Typography, message } from "antd";
 import { CommentOutlined, DeleteOutlined, PlayCircleOutlined, ReloadOutlined, SearchOutlined } from "@ant-design/icons";
 
@@ -32,20 +32,37 @@ export default function SessionManager({ language }: { language: "zh" | "en" }) 
   const [resuming, setResuming] = useState(false);
   const [query, setQuery] = useState("");
   const [messageApi, contextHolder] = message.useMessage();
+  const detailRequestRef = useRef(0);
 
-  const loadDetail = useCallback(async (file: string) => {
+  const loadDetail = useCallback(async (session: CodexSessionSummary) => {
+    const requestId = ++detailRequestRef.current;
+    setSelected({ ...session, messages: [] });
     setDetailLoading(true);
-    try { setSelected(await window.codexAPI.getSession(file)); }
+    try {
+      const detail = await window.codexAPI.getSession(session.file);
+      if (requestId === detailRequestRef.current) setSelected(detail);
+    }
     catch (error) { messageApi.error((error as Error).message); }
-    finally { setDetailLoading(false); }
+    finally {
+      if (requestId === detailRequestRef.current) setDetailLoading(false);
+    }
   }, [messageApi]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const next = await window.codexAPI.listSessions();
+      let next = await window.codexAPI.listSessions(true);
+      const usedSnapshot = next.length > 0;
+      if (!usedSnapshot) next = await window.codexAPI.listSessions();
       setSessions(next);
-      if (next.length) await loadDetail(next[0].file); else setSelected(undefined);
+      setLoading(false);
+      if (next.length) {
+        await loadDetail(next[0]);
+        if (usedSnapshot) {
+          const refreshed = await window.codexAPI.listSessions();
+          setSessions(refreshed);
+        }
+      } else setSelected(undefined);
     } catch (error) { messageApi.error((error as Error).message); }
     finally { setLoading(false); }
   }, [loadDetail, messageApi]);
@@ -62,7 +79,7 @@ export default function SessionManager({ language }: { language: "zh" | "en" }) 
       const next = sessions.filter((item) => item.file !== file);
       setSessions(next);
       if (selected?.file === file) {
-        if (next.length) await loadDetail(next[0].file); else setSelected(undefined);
+        if (next.length) await loadDetail(next[0]); else setSelected(undefined);
       }
       messageApi.success(zh ? "会话已删除" : "Session deleted");
     } catch (error) { messageApi.error((error as Error).message); }
@@ -89,7 +106,7 @@ export default function SessionManager({ language }: { language: "zh" | "en" }) 
         <div className="session-list-scroll">
           {loading ? <Skeleton active title={false} paragraph={{ rows: 9 }} /> : (
             <List dataSource={filtered} locale={{ emptyText: <Empty description={zh ? "暂无会话" : "No sessions"} /> }} renderItem={(session) => (
-              <List.Item className={`session-list-item ${selected?.file === session.file ? "selected" : ""}`} onClick={() => void loadDetail(session.file)}>
+              <List.Item className={`session-list-item ${selected?.file === session.file ? "selected" : ""}`} onClick={() => void loadDetail(session)}>
                 <div className="session-item-copy">
                   <Text strong ellipsis>{session.title}</Text>
                   <Text type="secondary">{formatRelativeDate(session.updatedAt, language)} · {session.messageCount} {zh ? "条消息" : "messages"}</Text>
@@ -100,7 +117,7 @@ export default function SessionManager({ language }: { language: "zh" | "en" }) 
         </div>
       </aside>
       <main className="session-detail-pane">
-        {loading || detailLoading ? <Skeleton active paragraph={{ rows: 12 }} /> : selected ? (
+        {loading ? <Skeleton active paragraph={{ rows: 12 }} /> : selected ? (
           <>
             <header className="session-detail-header">
               <div className="session-detail-top">
@@ -122,7 +139,7 @@ export default function SessionManager({ language }: { language: "zh" | "en" }) 
             </header>
             <div className="conversation-title"><CommentOutlined /><Title level={4}>{zh ? "对话记录" : "Conversation"}</Title></div>
             <div className="conversation-scroll">
-              {selected.messages.map((item, index) => (
+              {detailLoading ? <Skeleton active title={false} paragraph={{ rows: 10 }} /> : selected.messages.map((item, index) => (
                 <article className={`conversation-message ${item.role}`} key={`${item.timestamp}-${index}`}>
                   <div className="conversation-message-head"><strong>{item.role === "user" ? (zh ? "用户" : "User") : "Codex"}</strong><span>{formatDate(item.timestamp, language)}</span></div>
                   <pre>{item.content}</pre>

@@ -98,7 +98,8 @@ interface Window {
     }>;
     loadModels: (payload: { baseUrl: string; apiKey: string }) => Promise<string[]>;
     testConnection: (payload: { baseUrl: string; apiKey: string; model: string }) => Promise<{ ok: boolean; status: number; endpoint: string; body: unknown }>;
-    listSessions: () => Promise<CodexSessionSummary[]>;
+    prepareSessions: () => Promise<boolean>;
+    listSessions: (allowStale?: boolean) => Promise<CodexSessionSummary[]>;
     getSession: (file: string) => Promise<CodexSessionDetail>;
     deleteSession: (file: string) => Promise<boolean>;
     resumeSession: (file: string) => Promise<boolean>;

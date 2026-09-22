@@ -16,6 +16,21 @@ mac:
   target:
     - dmg
     - zip
+dmg:
+  title: ${productName} ${version}
+  background: build/dmg-background.png
+  iconSize: 96
+  window:
+    width: 660
+    height: 500
+  contents:
+    - x: 190
+      y: 350
+      type: file
+    - x: 470
+      y: 350
+      type: link
+      path: /Applications
 win:
   icon: build/icon.ico
   target:

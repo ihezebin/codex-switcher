@@ -46,6 +46,7 @@ let downloadedUpdatePath = "";
 let mainLanguage = "zh";
 let apiNetworkSessionPromise;
 let sessionScanCache;
+let sessionWarmupPromise;
 
 const mainTranslations = {
   zh: {
@@ -78,6 +79,7 @@ const mainTranslations = {
     deleteProfileFailed: (file) => `配置文件删除失败：${file}`,
     startupInitConfig: "正在初始化 Codex 配置目录…",
     startupCreateTray: "正在创建系统托盘菜单…",
+    startupSessions: "正在预加载会话索引…",
     startupWaitConfig: "正在等待配置加载完成…",
     codexHomeInaccessible: "无法访问 Codex 配置目录",
     directory: (home) => `目录：${home}`,
@@ -116,6 +118,7 @@ const mainTranslations = {
     deleteProfileFailed: (file) => `Failed to delete profile file: ${file}`,
     startupInitConfig: "Initializing Codex config folder...",
     startupCreateTray: "Creating system tray menu...",
+    startupSessions: "Preloading session index...",
     startupWaitConfig: "Waiting for config loading to finish...",
     codexHomeInaccessible: "Cannot Access Codex Config Folder",
     directory: (home) => `Directory: ${home}`,
@@ -230,6 +233,11 @@ function sessionCacheDatabase() {
     file_size INTEGER NOT NULL,
     summary_json TEXT,
     usage_json TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS session_list_snapshot_v1 (
+    snapshot_id INTEGER PRIMARY KEY CHECK (snapshot_id = 1),
+    sessions_json TEXT NOT NULL,
+    updated_ms REAL NOT NULL
   )`);
   return sessionScanCache;
 }
@@ -240,6 +248,21 @@ function readCachedSessionData(file, stat) {
     if (!row) return null;
     return { summary: row.summary_json ? JSON.parse(row.summary_json) : null, usageRows: JSON.parse(row.usage_json) };
   } catch (_) { return null; }
+}
+
+function readSessionListSnapshot() {
+  try {
+    const row = sessionCacheDatabase().prepare("SELECT sessions_json FROM session_list_snapshot_v1 WHERE snapshot_id = 1").get();
+    return row ? JSON.parse(row.sessions_json) : null;
+  } catch (_) { return null; }
+}
+
+function writeSessionListSnapshot(sessions) {
+  try {
+    sessionCacheDatabase().prepare(`INSERT OR REPLACE INTO session_list_snapshot_v1
+      (snapshot_id, sessions_json, updated_ms) VALUES (1, ?, ?)`)
+      .run(JSON.stringify(sessions), Date.now());
+  } catch (_) {}
 }
 
 function writeCachedSessionData(file, stat, data) {
@@ -351,7 +374,7 @@ async function sessionData(file) {
 
 async function sessionSummary(file, titles = new Map()) {
   const data = await sessionData(file);
-  if (!data.summary) return null;
+  if (!data?.summary) return null;
   return { ...data.summary, title: titles.get(data.summary.id) || data.summary.title };
 }
 
@@ -384,9 +407,7 @@ async function groupedSessionData(file) {
   return allData.filter(({ data }) => data.summary?.id === targetData.summary.id);
 }
 
-async function listSessions() {
-  const titles = await loadSessionTitles();
-  const sessions = await Promise.all((await sessionFiles()).map((file) => sessionSummary(file, titles)));
+function mergeSessionList(sessions, titles = new Map()) {
   const groups = new Map();
   for (const summary of sessions.filter(Boolean)) {
     const group = groups.get(summary.id) || [];
@@ -396,6 +417,38 @@ async function listSessions() {
   return [...groups.values()]
     .map((group) => mergeSessionGroup(group, titles))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+async function listSessions(allowStale = false) {
+  if (allowStale) {
+    const snapshot = readSessionListSnapshot();
+    if (snapshot) return snapshot;
+
+    try {
+      const titles = await loadSessionTitles();
+      const rows = sessionCacheDatabase().prepare("SELECT summary_json FROM session_scan_cache_v1 WHERE summary_json IS NOT NULL").all();
+      const cachedSessions = rows.map((row) => JSON.parse(row.summary_json));
+      const sessions = mergeSessionList(cachedSessions, titles);
+      if (sessions.length) writeSessionListSnapshot(sessions);
+      return sessions;
+    } catch (_) { return []; }
+  }
+
+  const titles = await loadSessionTitles();
+  const summaries = await Promise.all((await sessionFiles()).map((file) => sessionSummary(file, titles)));
+  const sessions = mergeSessionList(summaries, titles);
+  writeSessionListSnapshot(sessions);
+  return sessions;
+}
+
+function prepareSessionData() {
+  if (!sessionWarmupPromise) {
+    sessionWarmupPromise = listSessions(false).catch((error) => {
+      console.warn("[sessions] startup warmup failed", error);
+      return [];
+    });
+  }
+  return sessionWarmupPromise;
 }
 
 function assertSessionFile(file) {
@@ -432,6 +485,9 @@ async function deleteSession(file) {
       sessionCacheDatabase().prepare("DELETE FROM session_scan_cache_v1 WHERE file_path = ?").run(segment);
     } catch (_) {}
   }));
+  try {
+    sessionCacheDatabase().prepare("DELETE FROM session_list_snapshot_v1 WHERE snapshot_id = 1").run();
+  } catch (_) {}
   return true;
 }
 
@@ -1618,7 +1674,11 @@ ipcMain.handle("codex:apply-profile", async (_, name) => {
 });
 ipcMain.handle("codex:load-models", (_, payload) => loadModels(payload));
 ipcMain.handle("codex:test-connection", (_, payload) => testConnection(payload));
-ipcMain.handle("codex:list-sessions", () => listSessions());
+ipcMain.handle("codex:list-sessions", (_, allowStale = false) => listSessions(Boolean(allowStale)));
+ipcMain.handle("codex:prepare-sessions", (event) => {
+  event.sender.send("codex:startup-status", t("startupSessions"));
+  return prepareSessionData().then(() => true);
+});
 ipcMain.handle("codex:get-session", (_, file) => getSession(file));
 ipcMain.handle("codex:delete-session", (_, file) => deleteSession(file));
 ipcMain.handle("codex:resume-session", (_, file) => resumeSession(file));
