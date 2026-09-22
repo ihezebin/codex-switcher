@@ -52,6 +52,22 @@ yarn dist:win
 - `yarn dist:win` 只生成 Windows x64 包；在 Apple Silicon macOS 上交叉构建会下载对应的 Windows Electron 运行时。
 - macOS 签名、公证和 Windows 代码签名需要额外配置证书，本项目默认生成未签名包。
 
+### macOS 提示 App 已损坏
+
+由于当前 DMG 未进行 Apple 开发者签名和公证，从网络下载后，macOS 可能提示“Codex Switcher.app 已损坏，无法打开”。确认 DMG 来自本项目官方 Release 后，将 App 拖入“应用程序”目录，然后在 Terminal 中执行：
+
+```bash
+xattr -cr "/Applications/Codex Switcher.app"
+```
+
+执行完成后重新打开 Codex Switcher。如果提示权限不足，可执行：
+
+```bash
+sudo xattr -cr "/Applications/Codex Switcher.app"
+```
+
+该命令会清除 App 的 macOS 隔离属性，因此只应对来源可信的安装包执行。
+
 Windows 安装包支持自定义安装目录，并同时生成开始菜单和桌面快捷方式；portable 版本无需安装即可运行。给别人分发时使用 `release/Codex Switcher-0.1.0-win-x64.exe` 这类 NSIS 安装程序，不要分发 `*-portable.exe` 或 `win-unpacked/` 目录。
 
 ## 版本更新配置
