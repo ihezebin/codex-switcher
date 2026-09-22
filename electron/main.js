@@ -1498,6 +1498,10 @@ async function createWindow() {
       preload: path.join(__dirname, "../preload/index.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Configuration fields do not need Chromium/macOS spell checking. Keeping
+      // it disabled avoids unnecessary native text-service/IMK interactions
+      // while preserving normal Chinese and other IME input.
+      spellcheck: false,
       devTools: !app.isPackaged,
     },
   };
