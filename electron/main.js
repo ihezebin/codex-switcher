@@ -11,7 +11,7 @@ const {
   Tray,
 } = require("electron");
 const fs = require("node:fs/promises");
-const { createReadStream, createWriteStream } = require("node:fs");
+const { createReadStream, createWriteStream, mkdirSync } = require("node:fs");
 const readline = require("node:readline");
 const { DatabaseSync } = require("node:sqlite");
 const { Transform } = require("node:stream");
@@ -44,6 +44,7 @@ let latestUpdateInfo = null;
 let downloadedUpdatePath = "";
 let mainLanguage = "zh";
 let apiNetworkSessionPromise;
+let sessionScanCache;
 
 const mainTranslations = {
   zh: {
@@ -217,8 +218,38 @@ async function readJsonLines(file, visitor) {
   }
 }
 
-async function sessionSummary(file, titles = new Map()) {
-  const stat = await fs.stat(file);
+function sessionCacheDatabase() {
+  if (sessionScanCache) return sessionScanCache;
+  const cacheDirectory = path.join(app.getPath("userData"), "cache");
+  mkdirSync(cacheDirectory, { recursive: true });
+  sessionScanCache = new DatabaseSync(path.join(cacheDirectory, "codex-session-cache.sqlite"));
+  sessionScanCache.exec(`CREATE TABLE IF NOT EXISTS session_scan_cache_v1 (
+    file_path TEXT PRIMARY KEY,
+    modified_ms REAL NOT NULL,
+    file_size INTEGER NOT NULL,
+    summary_json TEXT,
+    usage_json TEXT NOT NULL
+  )`);
+  return sessionScanCache;
+}
+
+function readCachedSessionData(file, stat) {
+  try {
+    const row = sessionCacheDatabase().prepare("SELECT summary_json, usage_json FROM session_scan_cache_v1 WHERE file_path = ? AND modified_ms = ? AND file_size = ?").get(file, stat.mtimeMs, stat.size);
+    if (!row) return null;
+    return { summary: row.summary_json ? JSON.parse(row.summary_json) : null, usageRows: JSON.parse(row.usage_json) };
+  } catch (_) { return null; }
+}
+
+function writeCachedSessionData(file, stat, data) {
+  try {
+    sessionCacheDatabase().prepare(`INSERT OR REPLACE INTO session_scan_cache_v1
+      (file_path, modified_ms, file_size, summary_json, usage_json) VALUES (?, ?, ?, ?, ?)`)
+      .run(file, stat.mtimeMs, stat.size, data.summary ? JSON.stringify(data.summary) : null, JSON.stringify(data.usageRows));
+  } catch (_) {}
+}
+
+async function parseSessionData(file, stat) {
   const summary = {
     id: path.basename(file, ".jsonl"), file, title: "未命名会话", cwd: "",
     createdAt: stat.birthtime.toISOString(), updatedAt: stat.mtime.toISOString(),
@@ -226,15 +257,74 @@ async function sessionSummary(file, titles = new Map()) {
   };
   let foundTitle = false;
   let isSubagent = false;
+  let currentModel = "unknown";
+  let highWater = null;
+  let lastSignature = "";
+  let eventIndex = 0;
+  let sessionId = "";
+  const usageRows = [];
   await readJsonLines(file, (entry) => {
     if (entry.type === "session_meta") {
       summary.id = entry.payload?.id || entry.payload?.session_id || summary.id;
+      sessionId = summary.id;
       summary.cwd = entry.payload?.cwd || "";
       summary.createdAt = entry.payload?.timestamp || entry.timestamp || summary.createdAt;
       const source = entry.payload?.source;
       isSubagent = source === "subagent" || Boolean(source?.subagent) || Boolean(entry.payload?.parent_thread_id);
     }
-    if (entry.type === "turn_context" && entry.payload?.model) summary.model = entry.payload.model;
+    if (entry.type === "turn_context" && entry.payload?.model) {
+      summary.model = entry.payload.model;
+      currentModel = normalizeCodexModel(entry.payload.model);
+    }
+    if (!isSubagent && entry.type === "event_msg" && entry.payload?.type === "token_count") {
+      const info = entry.payload?.info;
+      const total = info?.total_token_usage;
+      const last = info?.last_token_usage;
+      if (info && (total || last)) {
+        if (info.model || info.model_name) currentModel = normalizeCodexModel(info.model || info.model_name);
+        const signature = JSON.stringify({ total, last });
+        if (signature !== lastSignature) {
+          lastSignature = signature;
+          const counter = (value) => ({
+            input_tokens: Number(value?.input_tokens || 0),
+            cached_input_tokens: Math.min(Number(value?.cached_input_tokens || value?.cache_read_input_tokens || 0), Number(value?.input_tokens || 0)),
+            output_tokens: Number(value?.output_tokens || 0),
+          });
+          let usage;
+          if (last && Object.keys(last).length) usage = counter(last);
+          else {
+            const current = counter(total);
+            usage = highWater ? {
+              input_tokens: Math.max(0, current.input_tokens - highWater.input_tokens),
+              cached_input_tokens: Math.max(0, current.cached_input_tokens - highWater.cached_input_tokens),
+              output_tokens: Math.max(0, current.output_tokens - highWater.output_tokens),
+            } : current;
+          }
+          if (total) {
+            const current = counter(total);
+            highWater = highWater ? {
+              input_tokens: Math.max(highWater.input_tokens, current.input_tokens),
+              cached_input_tokens: Math.max(highWater.cached_input_tokens, current.cached_input_tokens),
+              output_tokens: Math.max(highWater.output_tokens, current.output_tokens),
+            } : current;
+          }
+          const date = new Date(entry.timestamp);
+          if ((!usage.input_tokens && !usage.cached_input_tokens && !usage.output_tokens) || Number.isNaN(date.getTime())) return;
+          eventIndex += 1;
+          usageRows.push({
+            id: `codex_session:${sessionId || path.basename(file)}:${eventIndex}`,
+            timestamp: entry.timestamp,
+            model: currentModel,
+            inputTokens: usage.input_tokens,
+            cacheReadTokens: usage.cached_input_tokens,
+            outputTokens: usage.output_tokens,
+            totalTokens: usage.input_tokens + usage.output_tokens,
+            status: 200,
+            dataSource: "codex_session",
+          });
+        }
+      }
+    }
     if (entry.type !== "response_item" || entry.payload?.type !== "message") return;
     const role = entry.payload?.role;
     if (role !== "user" && role !== "assistant") return;
@@ -246,9 +336,22 @@ async function sessionSummary(file, titles = new Map()) {
       foundTitle = true;
     }
   });
-  if (isSubagent) return null;
-  summary.title = titles.get(summary.id) || summary.title;
-  return summary;
+  return isSubagent ? { summary: null, usageRows: [] } : { summary, usageRows };
+}
+
+async function sessionData(file) {
+  const stat = await fs.stat(file);
+  const cached = readCachedSessionData(file, stat);
+  if (cached) return cached;
+  const data = await parseSessionData(file, stat);
+  writeCachedSessionData(file, stat, data);
+  return data;
+}
+
+async function sessionSummary(file, titles = new Map()) {
+  const data = await sessionData(file);
+  if (!data.summary) return null;
+  return { ...data.summary, title: titles.get(data.summary.id) || data.summary.title };
 }
 
 async function listSessions() {
@@ -287,6 +390,9 @@ async function deleteSession(file) {
   if (!summary || (expectedId && summary.id !== expectedId && !path.basename(target).includes(summary.id)))
     throw new Error("会话 ID 与文件不匹配，已拒绝删除");
   await fs.unlink(target);
+  try {
+    sessionCacheDatabase().prepare("DELETE FROM session_scan_cache_v1 WHERE file_path = ?").run(target);
+  } catch (_) {}
   return true;
 }
 
@@ -410,77 +516,18 @@ function bucketKey(date, range) {
 async function getUsageStatistics(range = "today") {
   const safeRange = ["today", "7d", "30d"].includes(range) ? range : "today";
   const start = usageStart(safeRange);
-  const rows = [];
-  await Promise.all((await sessionFiles()).map(async (file) => {
-    let currentModel = "unknown";
-    let highWater = null;
-    let lastSignature = "";
-    let eventIndex = 0;
-    let sessionId = "";
-    let isSubagent = false;
-    const fileRows = [];
-    await readJsonLines(file, (entry) => {
-      if (entry.type === "session_meta") {
-        sessionId = entry.payload?.id || entry.payload?.session_id || sessionId;
-        isSubagent = entry.payload?.source === "subagent" || Boolean(entry.payload?.source?.subagent) || Boolean(entry.payload?.parent_thread_id);
-      }
-      if (isSubagent) return;
-      if (entry.type === "turn_context" && entry.payload?.model) currentModel = normalizeCodexModel(entry.payload.model);
-      if (entry.type !== "event_msg" || entry.payload?.type !== "token_count") return;
-      const date = new Date(entry.timestamp);
-      if (Number.isNaN(date.getTime())) return;
-      const info = entry.payload?.info;
-      if (!info) return;
-      if (info.model || info.model_name) currentModel = normalizeCodexModel(info.model || info.model_name);
-      const total = info.total_token_usage;
-      const last = info.last_token_usage;
-      if (!total && !last) return;
-      const signature = JSON.stringify({ total, last });
-      if (signature === lastSignature) return;
-      lastSignature = signature;
-      const counter = (value) => ({
-        input_tokens: Number(value?.input_tokens || 0),
-        cached_input_tokens: Math.min(Number(value?.cached_input_tokens || value?.cache_read_input_tokens || 0), Number(value?.input_tokens || 0)),
-        output_tokens: Number(value?.output_tokens || 0),
+  const files = await sessionFiles();
+  const cachedSessions = await Promise.all(files.map(sessionData));
+  const rows = cachedSessions.flatMap(({ usageRows }) => usageRows)
+    .filter((row) => new Date(row.timestamp) >= start)
+    .map((row) => {
+      const estimated = estimateCost(row.model, {
+        input_tokens: row.inputTokens,
+        cached_input_tokens: row.cacheReadTokens,
+        output_tokens: row.outputTokens,
       });
-      let usage;
-      if (last && Object.keys(last).length) usage = counter(last);
-      else {
-        const current = counter(total);
-        usage = highWater ? {
-          input_tokens: Math.max(0, current.input_tokens - highWater.input_tokens),
-          cached_input_tokens: Math.max(0, current.cached_input_tokens - highWater.cached_input_tokens),
-          output_tokens: Math.max(0, current.output_tokens - highWater.output_tokens),
-        } : current;
-      }
-      if (total) {
-        const current = counter(total);
-        highWater = highWater ? {
-          input_tokens: Math.max(highWater.input_tokens, current.input_tokens),
-          cached_input_tokens: Math.max(highWater.cached_input_tokens, current.cached_input_tokens),
-          output_tokens: Math.max(highWater.output_tokens, current.output_tokens),
-        } : current;
-      }
-      if (!usage.input_tokens && !usage.cached_input_tokens && !usage.output_tokens) return;
-      if (date < start) return;
-      eventIndex += 1;
-      const estimated = estimateCost(currentModel, usage);
-      fileRows.push({
-        id: `codex_session:${sessionId || path.basename(file)}:${eventIndex}`,
-        timestamp: entry.timestamp,
-        model: currentModel,
-        inputTokens: usage.input_tokens,
-        cacheReadTokens: usage.cached_input_tokens,
-        outputTokens: usage.output_tokens,
-        totalTokens: usage.input_tokens + usage.output_tokens,
-        cost: estimated.cost,
-        priced: estimated.priced,
-        status: 200,
-        dataSource: "codex_session",
-      });
+      return { ...row, cost: estimated.cost, priced: estimated.priced };
     });
-    rows.push(...fileRows);
-  }));
   rows.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   const pointCount = safeRange === "today" ? 24 : safeRange === "7d" ? 7 : 30;
   const points = Array.from({ length: pointCount }, (_, index) => {

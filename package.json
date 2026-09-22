@@ -27,6 +27,8 @@
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
     "@chinese-fonts/xiaolai": "^3.0.0",
+    "@free-fonts/zhuque-fangsong": "^1.0.0",
+    "@hanzi.pro/webfonts-lxgw-wenkai": "^0.1.0",
     "@iarna/toml": "^3.0.0",
     "antd": "^5.24.8",
     "react": "^19.0.0",
@@ -37,8 +39,8 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
-    "electron-builder": "26.15.3",
     "electron": "^35.1.5",
+    "electron-builder": "26.15.3",
     "electron-vite": "^5.0.0",
     "typescript": "^5.8.2",
     "vite": "^6.2.2"

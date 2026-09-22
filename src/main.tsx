@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { applyAppFont, getStoredAppFont, setAppFontFamily } from './fonts/appFont';
 import { getTranslations, type LanguageMode } from './i18n';
 import './styles.css';
 
@@ -9,6 +10,8 @@ const bootStatus = document.getElementById('boot-loader-status');
 const bootLanguage: LanguageMode =
   localStorage.getItem('codex-switcher-language') === 'en' ? 'en' : 'zh';
 const bootText = getTranslations(bootLanguage);
+const bootFont = getStoredAppFont();
+setAppFontFamily(bootFont);
 let appReady = false;
 let fontReady = false;
 
@@ -33,11 +36,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 );
 
 requestAnimationFrame(() => {
-  // Xiaolai contains many font assets. Load it after the first paint so it
-  // cannot delay the startup skeleton or the initial application layout.
+  // The selected webfont contains many split assets. Load only that font after
+  // first paint so it cannot delay the startup skeleton.
   updateBootStatus(bootText.loadingFont);
   const loadFont = () => {
-    void import('@chinese-fonts/xiaolai/dist/Xiaolai/result.css')
+    void applyAppFont(bootFont, false)
       .then(() => updateBootStatus(bootText.finishingInit))
       .catch(() => updateBootStatus(bootText.usingSystemFont))
       .finally(() => {

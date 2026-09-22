@@ -3,9 +3,8 @@
 }
 
 :root {
-  font-family:
-    "Xiaolai SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
-    sans-serif;
+  --app-font-family: "Xiaolai SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-family: var(--app-font-family);
   color: #1f2937;
   background: #f5f7fb;
   font-synthesis: none;
@@ -527,54 +526,29 @@ html[data-theme="dark"] .settings-row {
   color: #1677ff !important;
   background: #eff6ff !important;
 }
-.settings-language-row {
-  flex-direction: column;
-  align-items: stretch;
-}
 .settings-language-button {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.settings-language-current {
-  margin-left: auto;
-  color: #94a3b8 !important;
-  font-size: 12px;
-}
-.settings-language-arrow {
-  color: #94a3b8;
-  font-size: 10px;
-  transition: transform 0.18s ease;
-}
-.settings-language-arrow.open {
-  transform: rotate(180deg);
-}
-.settings-language-submenu {
-  margin: 4px 0 0 28px;
-  padding: 4px;
-  border-radius: 8px;
-  background: #f8fafc;
-}
-.settings-language-submenu .ant-btn {
-  width: 100%;
-  justify-content: flex-start;
-  color: #64748b;
-}
-.settings-language-submenu .ant-btn.selected {
-  color: #1677ff;
-  background: #eff6ff;
-  font-weight: 600;
-}
-html[data-theme="dark"] .settings-language-submenu {
-  background: #111827;
-}
-html[data-theme="dark"] .settings-language-submenu .ant-btn {
-  color: #cbd5e1;
-}
-html[data-theme="dark"] .settings-language-submenu .ant-btn.selected {
-  color: #91caff;
-  background: #183762;
-}
+.language-font-modal .ant-modal-body { padding-top: 4px; }
+.preference-section + .preference-section { margin-top: 24px; }
+.preference-section-title { margin-bottom: 10px; color: #475569; font-size: 13px; font-weight: 700; }
+.preference-choice-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.font-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.preference-choice { position: relative; min-width: 0; padding: 13px 14px; border: 1px solid #dbe3ee; border-radius: 10px; color: #334155; background: #fff; cursor: pointer; text-align: left; transition: border-color .18s, box-shadow .18s, background .18s; }
+.preference-choice:hover { border-color: #91caff; background: #f8fbff; }
+.preference-choice.active { border-color: #1677ff; background: #eff6ff; box-shadow: 0 0 0 2px rgba(22,119,255,.08); }
+.preference-choice-check { position: absolute; top: 10px; right: 10px; color: #1677ff; }
+.preference-choice-name { display: block; padding-right: 20px; font-size: 14px; font-weight: 700; }
+.preference-choice-description { display: block; margin-top: 5px; color: #94a3b8; font-size: 11px; line-height: 1.45; }
+.font-choice-preview { display: block; margin-top: 12px; overflow: hidden; color: #475569; font-size: 15px; white-space: nowrap; text-overflow: ellipsis; }
+html[data-theme="dark"] .preference-section-title { color: #cbd5e1; }
+html[data-theme="dark"] .preference-choice { border-color: #334155; color: #e2e8f0; background: #111827; }
+html[data-theme="dark"] .preference-choice:hover { border-color: #3b82f6; background: #172033; }
+html[data-theme="dark"] .preference-choice.active { border-color: #4096ff; background: #183762; }
+html[data-theme="dark"] .preference-choice-description { color: #94a3b8; }
+html[data-theme="dark"] .font-choice-preview { color: #cbd5e1; }
 
 .feature-fullscreen-drawer .ant-drawer-content-wrapper {
   top: 42px;
@@ -718,7 +692,10 @@ html[data-theme="dark"] .feature-fullscreen-drawer .ant-drawer-body {
 .usage-summary-card .ant-statistic-content { color: currentColor; }
 .usage-summary-grid .ant-statistic-content { color: currentColor; font-size: 26px; font-weight: 700; }
 .usage-cost-note { display: block; margin-top: 10px; }
-.usage-cache-tokens { display: block; font-size: 10px; white-space: nowrap; }
+.usage-token-breakdown { display: flex; align-items: baseline; justify-content: flex-end; gap: 5px; white-space: nowrap; }
+.usage-token-breakdown > span { color: #94a3b8; font-size: 9px; }
+.usage-cache-tokens { margin-top: 2px; color: #64748b; font-size: 10px; }
+.usage-cache-tokens strong { color: #64748b; font-weight: 600; font-variant-numeric: tabular-nums; }
 .usage-model-name { display: block; width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .usage-value { font-weight: 600; font-variant-numeric: tabular-nums; }
 .usage-value.tokens { color: #1677ff; }
@@ -1284,9 +1261,7 @@ html[data-theme="dark"] .connection-latency.latency-bad {
 }
 .update-value-tag {
   margin-inline-end: 0;
-  font-family:
-    "Xiaolai SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
-    sans-serif;
+  font-family: var(--app-font-family);
   font-size: 12px;
 }
 .update-notes {

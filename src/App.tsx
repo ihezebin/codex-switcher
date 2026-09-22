@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   App as AntApp,
@@ -23,7 +23,6 @@ import {
 import {
   CheckCircleFilled,
   CodeOutlined,
-  DownOutlined,
   DownloadOutlined,
   CloseOutlined,
   FolderOpenOutlined,
@@ -60,6 +59,13 @@ import {
 import { latencyClassName } from "./utils/latency";
 import SessionManager from "./components/SessionManager";
 import UsageStats from "./components/UsageStats";
+import {
+  APP_FONT_OPTIONS,
+  applyAppFont,
+  getAppFontFamily,
+  getStoredAppFont,
+  type AppFontKey,
+} from "./fonts/appFont";
 
 const { Sider, Content } = Layout;
 const { Text, Title } = Typography;
@@ -120,7 +126,9 @@ function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialTheme);
   const [languageMode, setLanguageMode] =
     useState<LanguageMode>(initialLanguage);
-  const [languageOpen, setLanguageOpen] = useState(false);
+  const [fontMode, setFontMode] = useState<AppFontKey>(getStoredAppFont);
+  const initialFontEffect = useRef(true);
+  const [languageFontOpen, setLanguageFontOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
@@ -162,6 +170,16 @@ function App() {
     localStorage.setItem("codex-switcher-language", languageMode);
     window.codexAPI?.setLanguage?.(languageMode);
   }, [languageMode]);
+
+  useEffect(() => {
+    if (initialFontEffect.current) {
+      initialFontEffect.current = false;
+      return;
+    }
+    void applyAppFont(fontMode).catch(() => {
+      // Keep the configured fallback stack if a packaged webfont fails to load.
+    });
+  }, [fontMode]);
 
   useEffect(() => {
     if (!window.codexAPI?.onStartupStatus) return;
@@ -634,7 +652,6 @@ function App() {
 
   const handleSelectLanguage = (language: LanguageMode) => {
     setLanguageMode(language);
-    setLanguageOpen(false);
   };
 
   const handleOpenUpdate = async () => {
@@ -732,34 +749,13 @@ function App() {
           type="text"
           className="settings-theme-button settings-language-button"
           icon={<GlobalOutlined />}
-          onClick={() => setLanguageOpen((value) => !value)}
+          onClick={() => {
+            setSettingsOpen(false);
+            setLanguageFontOpen(true);
+          }}
         >
-          <span>{t.language}</span>
-          <Text className="settings-language-current">
-            {languageMode === "en" ? t.languageEn : t.languageZh}
-          </Text>
-          <DownOutlined
-            className={`settings-language-arrow ${languageOpen ? "open" : ""}`}
-          />
+          <span>{languageMode === "zh" ? "语言字体" : "Language & Font"}</span>
         </Button>
-        {languageOpen && (
-          <div className="settings-language-submenu">
-            <Button
-              type="text"
-              className={languageMode === "zh" ? "selected" : ""}
-              onClick={() => handleSelectLanguage("zh")}
-            >
-              {t.languageZh}
-            </Button>
-            <Button
-              type="text"
-              className={languageMode === "en" ? "selected" : ""}
-              onClick={() => handleSelectLanguage("en")}
-            >
-              English
-            </Button>
-          </div>
-        )}
       </div>
       <Button
         type="text"
@@ -833,7 +829,7 @@ function App() {
     algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
     token: {
       colorPrimary: "#1677ff",
-      fontFamily: '"Xiaolai SC", "PingFang SC", "Hiragino Sans GB", sans-serif',
+      fontFamily: getAppFontFamily(fontMode),
       borderRadius: 8,
     },
   };
@@ -1264,6 +1260,70 @@ function App() {
         >
           <UsageStats language={languageMode} />
         </Drawer>
+
+        <Modal
+          open={languageFontOpen}
+          title={languageMode === "zh" ? "语言与字体" : "Language & Font"}
+          footer={null}
+          width={680}
+          centered
+          rootClassName="language-font-modal"
+          onCancel={() => setLanguageFontOpen(false)}
+        >
+          <section className="preference-section">
+            <div className="preference-section-title">
+              {languageMode === "zh" ? "界面语言" : "Interface language"}
+            </div>
+            <div className="preference-choice-grid">
+              {(["zh", "en"] as LanguageMode[]).map((language) => {
+                const active = languageMode === language;
+                return (
+                  <button
+                    key={language}
+                    type="button"
+                    className={`preference-choice ${active ? "active" : ""}`}
+                    onClick={() => handleSelectLanguage(language)}
+                  >
+                    {active && <CheckCircleFilled className="preference-choice-check" />}
+                    <span className="preference-choice-name">{language === "zh" ? "中文" : "English"}</span>
+                    <span className="preference-choice-description">
+                      {language === "zh" ? "使用简体中文显示界面" : "Display the interface in English"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+          <section className="preference-section">
+            <div className="preference-section-title">
+              {languageMode === "zh" ? "界面字体" : "Interface font"}
+            </div>
+            <div className="preference-choice-grid font-choice-grid">
+              {APP_FONT_OPTIONS.map((option) => {
+                const active = fontMode === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    className={`preference-choice ${active ? "active" : ""}`}
+                    onClick={() => setFontMode(option.key)}
+                  >
+                    {active && <CheckCircleFilled className="preference-choice-check" />}
+                    <span className="preference-choice-name">
+                      {languageMode === "zh" ? option.label : option.labelEn}
+                    </span>
+                    <span className="preference-choice-description">
+                      {languageMode === "zh" ? option.description : option.descriptionEn}
+                    </span>
+                    <span className="font-choice-preview" style={{ fontFamily: option.family }}>
+                      {option.preview}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </Modal>
 
         <Modal
           open={createOpen}

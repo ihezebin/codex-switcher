@@ -14,9 +14,9 @@ function TrendChart({ data, language }: { data: CodexUsageStatistics["points"]; 
   const width = 1000, height = 286, left = 62, top = 20, right = 24, bottom = 38;
   const plotWidth = width - left - right, plotHeight = height - top - bottom;
   const metrics = [
-    { key: "tokens" as const, color: "#1677ff", label: "Tokens" },
-    { key: "requests" as const, color: "#13c2c2", label: "Requests" },
-    { key: "cost" as const, color: "#fa8c16", label: "Cost" },
+    { key: "tokens" as const, color: "#1677ff", label: language === "zh" ? "总 Tokens" : "Total tokens" },
+    { key: "requests" as const, color: "#13c2c2", label: language === "zh" ? "请求数" : "Requests" },
+    { key: "cost" as const, color: "#fa8c16", label: language === "zh" ? "成本金额" : "Cost" },
   ];
   const maxima = Object.fromEntries(metrics.map(({ key }) => [key, Math.max(1, ...data.map((item) => item[key]))])) as Record<"tokens" | "requests" | "cost", number>;
   const pointFor = (key: "tokens" | "requests" | "cost", index: number) => ({
@@ -38,7 +38,7 @@ function TrendChart({ data, language }: { data: CodexUsageStatistics["points"]; 
   return (
     <div className="usage-chart-wrap" onMouseLeave={() => setHovered(null)}>
       <div className="usage-chart-legend">{metrics.map((metric) => <span key={metric.key}><i style={{ background: metric.color }} />{metric.label}</span>)}</div>
-      {active && <div className="usage-chart-tooltip" style={{ left: `${(hoverX / width) * 100}%` }}><strong>{active.label}</strong><span>{language === "zh" ? "Token" : "Tokens"}：{number.format(active.tokens)}</span><span>{language === "zh" ? "请求数" : "Requests"}：{number.format(active.requests)}</span><span>{language === "zh" ? "成本" : "Cost"}：{money(active.cost)}</span></div>}
+      {active && <div className="usage-chart-tooltip" style={{ left: `${(hoverX / width) * 100}%` }}><strong>{active.label}</strong><span>{language === "zh" ? "总 Tokens" : "Total tokens"}：{number.format(active.tokens)}</span><span>{language === "zh" ? "请求数" : "Requests"}：{number.format(active.requests)}</span><span>{language === "zh" ? "成本金额" : "Cost"}：{money(active.cost)}</span></div>}
       <svg className="usage-chart" viewBox={`0 0 ${width} ${height}`} role="img" onMouseMove={(event) => {
         const bounds = event.currentTarget.getBoundingClientRect();
         const x = ((event.clientX - bounds.left) / bounds.width) * width;
@@ -73,15 +73,15 @@ export default function UsageStats({ language }: { language: "zh" | "en" }) {
   const modelColumns: ColumnsType<CodexUsageStatistics["models"][number]> = useMemo(() => [
     { title: zh ? "模型" : "Model", dataIndex: "model" },
     { title: zh ? "请求数" : "Requests", dataIndex: "requests", align: "right", render: (value) => <span className="usage-value requests">{number.format(value)}</span> },
-    { title: "Tokens", dataIndex: "tokens", align: "right", render: (value) => <span className="usage-value tokens">{number.format(value)}</span> },
-    { title: zh ? "总成本" : "Cost", dataIndex: "cost", align: "right", render: (value) => <span className="usage-value cost">{money(value)}</span> },
+    { title: zh ? "总 Tokens" : "Total tokens", dataIndex: "tokens", align: "right", render: (value) => <span className="usage-value tokens">{number.format(value)}</span> },
+    { title: zh ? "总成本金额" : "Total cost", dataIndex: "cost", align: "right", render: (value) => <span className="usage-value cost">{money(value)}</span> },
   ], [zh]);
   const logColumns: ColumnsType<CodexUsageStatistics["logs"][number]> = useMemo(() => [
     { title: zh ? "时间" : "Time", dataIndex: "timestamp", width: 158, render: (value) => new Date(value).toLocaleString() },
     { title: zh ? "计费模型" : "Model", dataIndex: "model", width: 150, render: (value) => <Text className="usage-model-name" ellipsis={{ tooltip: value }}>{value}</Text> },
-    { title: zh ? "输入" : "Input", dataIndex: "inputTokens", width: 96, align: "right", render: (value, row) => <><div className="usage-value tokens">{number.format(Math.max(0, value - row.cacheReadTokens))}</div>{row.cacheReadTokens > 0 && <Text type="secondary" className="usage-cache-tokens">R {number.format(row.cacheReadTokens)}</Text>}</> },
-    { title: zh ? "输出" : "Output", dataIndex: "outputTokens", width: 84, align: "right", render: (value) => <span className="usage-value tokens">{number.format(value)}</span> },
-    { title: zh ? "总成本" : "Cost", dataIndex: "cost", width: 104, align: "right", render: (value, row) => row.priced ? <span className="usage-value cost">{money(value)}</span> : <Text type="secondary">-</Text> },
+    { title: zh ? "输入 Tokens" : "Input tokens", dataIndex: "inputTokens", width: 118, align: "right", render: (value, row) => <><div className="usage-token-breakdown"><span>{zh ? "非缓存" : "Uncached"}</span><strong className="usage-value tokens">{number.format(Math.max(0, value - row.cacheReadTokens))}</strong></div>{row.cacheReadTokens > 0 && <div className="usage-token-breakdown usage-cache-tokens"><span>{zh ? "缓存读取" : "Cache read"}</span><strong>{number.format(row.cacheReadTokens)}</strong></div>}</> },
+    { title: zh ? "输出 Tokens" : "Output tokens", dataIndex: "outputTokens", width: 96, align: "right", render: (value) => <span className="usage-value tokens">{number.format(value)}</span> },
+    { title: zh ? "总成本金额" : "Total cost", dataIndex: "cost", width: 108, align: "right", render: (value, row) => row.priced ? <span className="usage-value cost">{money(value)}</span> : <Text type="secondary">-</Text> },
     { title: zh ? "状态" : "Status", dataIndex: "status", width: 72, align: "center", render: (value) => value == null ? "-" : <Tag color={value >= 200 && value < 300 ? "success" : "error"}>{value}</Tag> },
   ], [zh]);
 
@@ -91,7 +91,7 @@ export default function UsageStats({ language }: { language: "zh" | "en" }) {
       <div className="usage-toolbar"><div><Title level={3}>{zh ? "用量统计" : "Usage statistics"}</Title><Text type="secondary">{zh ? "查看 AI 模型的使用情况和成本统计" : "View AI model usage and cost statistics"}</Text></div><div className="usage-range-actions"><Tooltip title={zh ? "刷新统计" : "Refresh statistics"}><Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshKey((value) => value + 1)} aria-label={zh ? "刷新统计" : "Refresh statistics"} /></Tooltip><Segmented value={range} onChange={(value) => setRange(value as Range)} options={[{ label: zh ? "当天" : "Today", value: "today" }, { label: zh ? "7 天" : "7 days", value: "7d" }, { label: zh ? "1 个月" : "1 month", value: "30d" }]} /></div></div>
       {loading || !data ? <Skeleton active paragraph={{ rows: 16 }} /> : <>
         <div className="usage-summary-grid">
-          <Card className="usage-summary-card tokens"><div className="usage-summary-icon"><ThunderboltOutlined /></div><Statistic title={zh ? "总 Token 消耗" : "Total tokens"} value={data.summary.tokens} formatter={(value) => number.format(Number(value))} /></Card>
+          <Card className="usage-summary-card tokens"><div className="usage-summary-icon"><ThunderboltOutlined /></div><Statistic title={zh ? "总 Tokens 消耗" : "Total tokens"} value={data.summary.tokens} formatter={(value) => number.format(Number(value))} /></Card>
           <Card className="usage-summary-card requests"><div className="usage-summary-icon"><ApiOutlined /></div><Statistic title={zh ? "总请求数" : "Total requests"} value={data.summary.requests} /></Card>
           <Card className="usage-summary-card cost"><div className="usage-summary-icon"><DollarOutlined /></div><Statistic title={zh ? "总成本金额（估算）" : "Estimated cost"} value={data.summary.cost} precision={4} prefix="$" /></Card>
         </div>

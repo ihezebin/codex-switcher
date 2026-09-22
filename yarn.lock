@@ -496,6 +496,16 @@
   resolved "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.12.tgz#9bdad8176be7811ad148d1f8772359041f46c6c5"
   integrity sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA==
 
+"@free-fonts/zhuque-fangsong@^1.0.0":
+  version "1.0.0"
+  resolved "https://registry.npmjs.org/@free-fonts/zhuque-fangsong/-/zhuque-fangsong-1.0.0.tgz#8dc47fd6e4655244d610eee5129a7794e3f1b299"
+  integrity sha512-XevMrKsZOM9yTey7Hah1eGNOArz7ouGNOR1yaNcjGA3h/sUPereBVHx/bP4HKhDSRpQAOM5gHqm7mwnLDKrSZA==
+
+"@hanzi.pro/webfonts-lxgw-wenkai@^0.1.0":
+  version "0.1.0"
+  resolved "https://registry.npmjs.org/@hanzi.pro/webfonts-lxgw-wenkai/-/webfonts-lxgw-wenkai-0.1.0.tgz#d476c34093ad89ba59704faed037282d9236bdf2"
+  integrity sha512-NvIYwAfA37shkzIirQ3D5QSiI+vqC/kYBIj759GuxWZxxr63lb6of592PnFQjHOKCO0gknrnT5/zA2KV1riTeA==
+
 "@iarna/toml@^3.0.0":
   version "3.0.0"
   resolved "https://registry.npmjs.org/@iarna/toml/-/toml-3.0.0.tgz#ccde5292fe9d348bbe93fe90d579fc442b72b0b3"
