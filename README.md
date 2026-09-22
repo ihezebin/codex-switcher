@@ -16,6 +16,8 @@
 
 ![Codex Switcher](./screenshot1.png)
 ![Codex Switcher](./screenshot2.png)
+![Codex Switcher](./screenshot3.png)
+![Codex Switcher](./screenshot4.png)
 
 ## 开发环境
 
@@ -125,8 +127,6 @@ Windows 安装包支持自定义安装目录，并同时生成开始菜单和桌
 - macOS 和 Windows 关闭主窗口时会隐藏到托盘；需要退出应用时，请使用托盘菜单中的“退出”。
 - Windows 使用独立的最小化、最大化/还原和关闭按钮，窗口支持拖动调整大小。
 - 主窗口默认宽度和最小宽度为 900px，高度和最小高度为 640px；右侧配置内容会随窗口宽度自适应。
-
-
 
 ## Codex 配置目录
 
