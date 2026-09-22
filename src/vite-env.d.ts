@@ -43,6 +43,7 @@ interface CodexSessionSummary {
   updatedAt: string;
   model: string;
   messageCount: number;
+  segmentCount: number;
 }
 
 interface CodexSessionDetail extends CodexSessionSummary {

@@ -103,17 +103,21 @@ export default function SessionManager({ language }: { language: "zh" | "en" }) 
         {loading || detailLoading ? <Skeleton active paragraph={{ rows: 12 }} /> : selected ? (
           <>
             <header className="session-detail-header">
-              <div>
-                <Title level={3} ellipsis={{ tooltip: selected.title }}>{selected.title}</Title>
-                <div className="session-meta"><span>{formatDate(selected.createdAt, language)}</span>{selected.model && <Tag color="blue">{selected.model}</Tag>}</div>
+              <div className="session-detail-top">
+                <div className="session-detail-heading">
+                  <Title level={3} ellipsis={{ tooltip: selected.title }}>{selected.title}</Title>
+                  <div className="session-meta"><span>{formatDate(selected.createdAt, language)}</span>{selected.model && <Tag color="blue">{selected.model}</Tag>}</div>
+                </div>
+                <div className="session-detail-actions">
+                  <Button type="primary" icon={<PlayCircleOutlined />} loading={resuming} onClick={() => void resume(selected.file)}>{zh ? "恢复会话" : "Resume"}</Button>
+                  <Popconfirm title={zh ? "确定删除这个会话吗？" : "Delete this session?"} description={selected.segmentCount > 1 ? (zh ? `此操作会永久删除该会话的 ${selected.segmentCount} 个 JSONL 分段。` : `This will permanently delete all ${selected.segmentCount} JSONL segments for the session.`) : (zh ? "此操作会永久删除对应的 JSONL 文件。" : "The JSONL file will be permanently deleted.")} okText={zh ? "删除" : "Delete"} cancelText={zh ? "取消" : "Cancel"} okButtonProps={{ danger: true }} onConfirm={() => remove(selected.file)}>
+                    <Button danger icon={<DeleteOutlined />}>{zh ? "删除会话" : "Delete"}</Button>
+                  </Popconfirm>
+                </div>
+              </div>
+              <div className="session-detail-paths">
                 <Text className="session-project" ellipsis={{ tooltip: selected.cwd || "-" }}>{selected.cwd || "-"}</Text>
                 <Text className="session-file" ellipsis={{ tooltip: selected.file }}>{selected.file}</Text>
-              </div>
-              <div className="session-detail-actions">
-                <Button type="primary" icon={<PlayCircleOutlined />} loading={resuming} onClick={() => void resume(selected.file)}>{zh ? "恢复会话" : "Resume"}</Button>
-                <Popconfirm title={zh ? "确定删除这个会话吗？" : "Delete this session?"} description={zh ? "此操作会永久删除对应的 JSONL 文件。" : "The JSONL file will be permanently deleted."} okText={zh ? "删除" : "Delete"} cancelText={zh ? "取消" : "Cancel"} okButtonProps={{ danger: true }} onConfirm={() => remove(selected.file)}>
-                  <Button danger icon={<DeleteOutlined />}>{zh ? "删除会话" : "Delete"}</Button>
-                </Popconfirm>
               </div>
             </header>
             <div className="conversation-title"><CommentOutlined /><Title level={4}>{zh ? "对话记录" : "Conversation"}</Title></div>

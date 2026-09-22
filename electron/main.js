@@ -313,7 +313,7 @@ async function parseSessionData(file, stat) {
           if ((!usage.input_tokens && !usage.cached_input_tokens && !usage.output_tokens) || Number.isNaN(date.getTime())) return;
           eventIndex += 1;
           usageRows.push({
-            id: `codex_session:${sessionId || path.basename(file)}:${eventIndex}`,
+            id: `codex_session:${path.basename(file, ".jsonl")}:${eventIndex}`,
             timestamp: entry.timestamp,
             model: currentModel,
             inputTokens: usage.input_tokens,
@@ -355,10 +355,47 @@ async function sessionSummary(file, titles = new Map()) {
   return { ...data.summary, title: titles.get(data.summary.id) || data.summary.title };
 }
 
+function mergeSessionGroup(summaries, titles = new Map()) {
+  const ordered = [...summaries].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const first = ordered[0];
+  const latest = [...ordered].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  return {
+    ...first,
+    file: latest.file,
+    title: titles.get(first.id) || first.title,
+    cwd: latest.cwd || ordered.findLast((item) => item.cwd)?.cwd || "",
+    createdAt: first.createdAt,
+    updatedAt: latest.updatedAt,
+    model: latest.model || ordered.findLast((item) => item.model)?.model || "",
+    messageCount: ordered.reduce((sum, item) => sum + item.messageCount, 0),
+    segmentCount: ordered.length,
+  };
+}
+
+async function groupedSessionData(file) {
+  const target = assertSessionFile(file);
+  const targetData = await sessionData(target);
+  if (!targetData.summary) throw new Error("不支持读取子代理会话");
+  const files = await sessionFiles();
+  const allData = await Promise.all(files.map(async (candidate) => ({
+    file: candidate,
+    data: candidate === target ? targetData : await sessionData(candidate),
+  })));
+  return allData.filter(({ data }) => data.summary?.id === targetData.summary.id);
+}
+
 async function listSessions() {
   const titles = await loadSessionTitles();
   const sessions = await Promise.all((await sessionFiles()).map((file) => sessionSummary(file, titles)));
-  return sessions.filter(Boolean).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const groups = new Map();
+  for (const summary of sessions.filter(Boolean)) {
+    const group = groups.get(summary.id) || [];
+    group.push(summary);
+    groups.set(summary.id, group);
+  }
+  return [...groups.values()]
+    .map((group) => mergeSessionGroup(group, titles))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 function assertSessionFile(file) {
@@ -370,30 +407,31 @@ function assertSessionFile(file) {
 
 async function getSession(file) {
   const target = assertSessionFile(file);
-  const summary = await sessionSummary(target, await loadSessionTitles());
-  if (!summary) throw new Error("不支持读取子代理会话");
+  const titles = await loadSessionTitles();
+  const group = await groupedSessionData(target);
+  const summary = mergeSessionGroup(group.map(({ data }) => data.summary), titles);
   const messages = [];
-  await readJsonLines(target, (entry) => {
-    if (entry.type !== "response_item" || entry.payload?.type !== "message") return;
-    const role = entry.payload?.role;
-    if (role !== "user" && role !== "assistant") return;
-    const content = messageText(entry.payload.content);
-    if (!content || content.startsWith("<environment_context>")) return;
-    messages.push({ role, content, timestamp: entry.timestamp || summary.createdAt });
-  });
+  await Promise.all(group.map(({ file: segment }) => readJsonLines(segment, (entry) => {
+      if (entry.type !== "response_item" || entry.payload?.type !== "message") return;
+      const role = entry.payload?.role;
+      if (role !== "user" && role !== "assistant") return;
+      const content = messageText(entry.payload.content);
+      if (!content || content.startsWith("<environment_context>")) return;
+      messages.push({ role, content, timestamp: entry.timestamp || summary.createdAt });
+    })));
+  messages.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   return { ...summary, messages };
 }
 
 async function deleteSession(file) {
   const target = assertSessionFile(file);
-  const expectedId = path.basename(target, ".jsonl").slice(-36);
-  const summary = await sessionSummary(target);
-  if (!summary || (expectedId && summary.id !== expectedId && !path.basename(target).includes(summary.id)))
-    throw new Error("会话 ID 与文件不匹配，已拒绝删除");
-  await fs.unlink(target);
-  try {
-    sessionCacheDatabase().prepare("DELETE FROM session_scan_cache_v1 WHERE file_path = ?").run(target);
-  } catch (_) {}
+  const group = await groupedSessionData(target);
+  await Promise.all(group.map(async ({ file: segment }) => {
+    await fs.unlink(segment);
+    try {
+      sessionCacheDatabase().prepare("DELETE FROM session_scan_cache_v1 WHERE file_path = ?").run(segment);
+    } catch (_) {}
+  }));
   return true;
 }
 
@@ -519,7 +557,11 @@ async function getUsageStatistics(range = "today") {
   const start = usageStart(safeRange);
   const files = await sessionFiles();
   const cachedSessions = await Promise.all(files.map(sessionData));
-  const rows = cachedSessions.flatMap(({ usageRows }) => usageRows)
+  const rows = cachedSessions.flatMap(({ usageRows }, fileIndex) =>
+    usageRows.map((row) => ({
+      ...row,
+      id: `${row.id}:${path.basename(files[fileIndex], ".jsonl")}`,
+    })))
     .filter((row) => new Date(row.timestamp) >= start)
     .map((row) => {
       const estimated = estimateCost(row.model, {
