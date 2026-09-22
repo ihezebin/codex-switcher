@@ -960,12 +960,16 @@ function normalizeUpdateInfo(manifest) {
   const downloadUrl =
     typeof downloads[platformKey] === "string" ? downloads[platformKey] : "";
   const currentVersion = app.getVersion();
+  const forceUpdate =
+    Boolean(minimumVersion) &&
+    compareVersions(currentVersion, minimumVersion) < 0;
   return {
     currentVersion,
     latestVersion: version,
     hasUpdate:
-      Boolean(version) &&
-      compareVersions(version, currentVersion) > 0,
+      forceUpdate ||
+      (Boolean(version) && compareVersions(version, currentVersion) > 0),
+    forceUpdate,
     platformKey,
     downloadUrl,
     notes,
@@ -978,18 +982,25 @@ function normalizeUpdateInfo(manifest) {
 }
 
 async function checkForUpdates() {
-  const response = await fetch(UPDATE_MANIFEST_URL, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
-  const body = await readJsonResponse(response);
-  if (!response.ok) {
-    throw new Error(
-      responseErrorMessage(body, t("checkUpdateFailed", response.status)),
-    );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const response = await apiFetch(UPDATE_MANIFEST_URL, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const body = await readJsonResponse(response);
+    if (!response.ok) {
+      throw new Error(
+        responseErrorMessage(body, t("checkUpdateFailed", response.status)),
+      );
+    }
+    latestUpdateInfo = normalizeUpdateInfo(body);
+    return latestUpdateInfo;
+  } finally {
+    clearTimeout(timeout);
   }
-  latestUpdateInfo = normalizeUpdateInfo(body);
-  return latestUpdateInfo;
 }
 
 function updateFileName(updateInfo) {

@@ -17,6 +17,7 @@ interface CodexUpdateInfo {
   currentVersion: string;
   latestVersion: string;
   hasUpdate: boolean;
+  forceUpdate: boolean;
   platformKey: string;
   downloadUrl: string;
   notes: string;

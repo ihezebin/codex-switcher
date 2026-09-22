@@ -276,7 +276,16 @@ function App() {
       if (!disposed) setCheckingUpdate(true);
       try {
         const info = await window.codexAPI.checkUpdates();
-        if (!disposed) setUpdateInfo(info);
+        if (!disposed) {
+          setUpdateInfo(info);
+          if (info.forceUpdate) {
+            const downloaded = Boolean(info.downloadedPath);
+            setUpdateDownloaded(downloaded);
+            setHasStartedUpdateDownload(downloaded);
+            setUpdateProgress(downloaded ? 100 : 0);
+            setUpdateOpen(true);
+          }
+        }
       } catch (_) {
         // Network or GitHub availability should not block normal profile switching.
       } finally {
@@ -703,6 +712,7 @@ function App() {
   };
 
   const hasProfiles = hasCodexConfig && profiles.length > 0;
+  const forceUpdate = Boolean(updateInfo?.forceUpdate);
 
   const handleRefreshProfiles = async () => {
     try {
@@ -1447,25 +1457,35 @@ function App() {
 
         <Modal
           open={updateOpen}
-          title={t.upgrade}
+          title={forceUpdate
+            ? (languageMode === "zh" ? "必须升级 Codex Switcher" : "Codex Switcher update required")
+            : t.upgrade}
           centered
           closable={false}
           maskClosable={false}
+          keyboard={!forceUpdate}
+          onCancel={() => {
+            if (!forceUpdate && !downloadingUpdate) setUpdateOpen(false);
+          }}
           footer={
             <Space>
-              <Button
-                onClick={() => setUpdateOpen(false)}
-                disabled={downloadingUpdate}
-              >
-                {t.close}
-              </Button>
+              {!forceUpdate && (
+                <Button
+                  onClick={() => setUpdateOpen(false)}
+                  disabled={downloadingUpdate}
+                >
+                  {t.close}
+                </Button>
+              )}
               {updateDownloaded ? (
                 <Button
                   type="primary"
                   icon={<DownloadOutlined />}
                   onClick={handleInstallUpdate}
                 >
-                  {t.installUpdate}
+                  {forceUpdate
+                    ? (languageMode === "zh" ? "立即安装" : "Install now")
+                    : t.installUpdate}
                 </Button>
               ) : (
                 <Button
@@ -1475,13 +1495,25 @@ function App() {
                   disabled={checkingUpdate || !updateInfo?.downloadUrl}
                   onClick={handleDownloadUpdate}
                 >
-                  {t.downloadUpdate}
+                  {forceUpdate
+                    ? (languageMode === "zh" ? "立即升级" : "Update now")
+                    : t.downloadUpdate}
                 </Button>
               )}
             </Space>
           }
         >
           <div className="update-modal">
+            {forceUpdate && (
+              <Alert
+                type="error"
+                showIcon
+                message={languageMode === "zh" ? "当前版本已低于最低支持版本" : "This version is no longer supported"}
+                description={languageMode === "zh"
+                  ? `当前版本 v${updateInfo?.currentVersion || APP_VERSION} 低于最低支持版本 v${updateInfo?.minimumVersion}。为确保配置兼容性和应用功能可以正常使用，必须升级后才能继续。`
+                  : `Version v${updateInfo?.currentVersion || APP_VERSION} is below the minimum supported version v${updateInfo?.minimumVersion}. You must update to keep configuration compatibility and app features working correctly.`}
+              />
+            )}
             <div className="update-version-row">
               <span>{t.currentVersion}</span>
               <Tag className="update-value-tag">
