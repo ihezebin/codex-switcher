@@ -6,13 +6,17 @@ const {
   Menu,
   nativeImage,
   net,
+  session,
   shell,
   Tray,
 } = require("electron");
 const fs = require("node:fs/promises");
-const { createWriteStream } = require("node:fs");
+const { createReadStream, createWriteStream } = require("node:fs");
+const readline = require("node:readline");
+const { DatabaseSync } = require("node:sqlite");
 const { Transform } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
+const { execFile, spawn } = require("node:child_process");
 const path = require("node:path");
 const os = require("node:os");
 const TOML = require("@iarna/toml");
@@ -39,6 +43,7 @@ let isQuitting = false;
 let latestUpdateInfo = null;
 let downloadedUpdatePath = "";
 let mainLanguage = "zh";
+let apiNetworkSessionPromise;
 
 const mainTranslations = {
   zh: {
@@ -132,6 +137,378 @@ function profilePath(name) {
 
 function configPath() {
   return path.join(codexHome(), "config.toml");
+}
+
+function sessionsPath() {
+  return path.join(codexHome(), "sessions");
+}
+
+function sessionRoots() {
+  return [sessionsPath(), path.join(codexHome(), "archived_sessions")];
+}
+
+function messageText(content) {
+  if (!Array.isArray(content)) return "";
+  return content.map((item) => item?.text || item?.input_text || item?.output_text || "").filter(Boolean).join("\n").trim();
+}
+
+function cleanSessionTitle(text) {
+  const cleaned = String(text || "")
+    .replace(/<environment_context>[\s\S]*?<\/environment_context>/g, "")
+    .replace(/# Files mentioned by the user:[\s\S]*?## My request:/g, "")
+    .replace(/<image[\s\S]*?<\/image>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.slice(0, 80) || "未命名会话";
+}
+
+async function sessionFiles() {
+  const files = [];
+  async function walk(directory) {
+    let entries = [];
+    try {
+      entries = await fs.readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+    await Promise.all(entries.map(async (entry) => {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) await walk(file);
+      else if (entry.isFile() && entry.name.endsWith(".jsonl")) files.push(file);
+    }));
+  }
+  await Promise.all(sessionRoots().map(walk));
+  return files;
+}
+
+async function loadSessionTitles() {
+  const titles = new Map();
+  try {
+    const source = await fs.readFile(path.join(codexHome(), "session_index.jsonl"), "utf8");
+    for (const line of source.split("\n")) {
+      try {
+        const item = JSON.parse(line);
+        if (item.id && item.thread_name?.trim()) titles.set(item.id, item.thread_name.trim());
+      } catch (_) {}
+    }
+  } catch (_) {}
+  for (const databaseFile of [path.join(codexHome(), "state_5.sqlite"), path.join(codexHome(), "sqlite", "codex-dev.db")]) {
+    try {
+      const database = new DatabaseSync(databaseFile, { readOnly: true });
+      const rows = database.prepare("SELECT id, title FROM threads WHERE title <> '' AND (first_user_message IS NULL OR TRIM(title) <> TRIM(first_user_message))").all();
+      for (const row of rows) if (row.id && row.title?.trim()) titles.set(row.id, row.title.trim());
+      database.close();
+    } catch (_) {}
+  }
+  return titles;
+}
+
+async function readJsonLines(file, visitor) {
+  const input = createReadStream(file, { encoding: "utf8" });
+  const lines = readline.createInterface({ input, crlfDelay: Infinity });
+  for await (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      await visitor(JSON.parse(line));
+    } catch (_) {
+      // Ignore a partially written line while Codex is still appending to the session.
+    }
+  }
+}
+
+async function sessionSummary(file, titles = new Map()) {
+  const stat = await fs.stat(file);
+  const summary = {
+    id: path.basename(file, ".jsonl"), file, title: "未命名会话", cwd: "",
+    createdAt: stat.birthtime.toISOString(), updatedAt: stat.mtime.toISOString(),
+    model: "", messageCount: 0,
+  };
+  let foundTitle = false;
+  let isSubagent = false;
+  await readJsonLines(file, (entry) => {
+    if (entry.type === "session_meta") {
+      summary.id = entry.payload?.id || entry.payload?.session_id || summary.id;
+      summary.cwd = entry.payload?.cwd || "";
+      summary.createdAt = entry.payload?.timestamp || entry.timestamp || summary.createdAt;
+      const source = entry.payload?.source;
+      isSubagent = source === "subagent" || Boolean(source?.subagent) || Boolean(entry.payload?.parent_thread_id);
+    }
+    if (entry.type === "turn_context" && entry.payload?.model) summary.model = entry.payload.model;
+    if (entry.type !== "response_item" || entry.payload?.type !== "message") return;
+    const role = entry.payload?.role;
+    if (role !== "user" && role !== "assistant") return;
+    const text = messageText(entry.payload.content);
+    if (!text || text.startsWith("<environment_context>")) return;
+    summary.messageCount += 1;
+    if (!foundTitle && role === "user") {
+      summary.title = cleanSessionTitle(text);
+      foundTitle = true;
+    }
+  });
+  if (isSubagent) return null;
+  summary.title = titles.get(summary.id) || summary.title;
+  return summary;
+}
+
+async function listSessions() {
+  const titles = await loadSessionTitles();
+  const sessions = await Promise.all((await sessionFiles()).map((file) => sessionSummary(file, titles)));
+  return sessions.filter(Boolean).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function assertSessionFile(file) {
+  const target = path.resolve(String(file || ""));
+  const insideRoot = sessionRoots().some((root) => target.startsWith(`${path.resolve(root)}${path.sep}`));
+  if (!insideRoot || !target.endsWith(".jsonl")) throw new Error("无效的会话文件路径");
+  return target;
+}
+
+async function getSession(file) {
+  const target = assertSessionFile(file);
+  const summary = await sessionSummary(target, await loadSessionTitles());
+  if (!summary) throw new Error("不支持读取子代理会话");
+  const messages = [];
+  await readJsonLines(target, (entry) => {
+    if (entry.type !== "response_item" || entry.payload?.type !== "message") return;
+    const role = entry.payload?.role;
+    if (role !== "user" && role !== "assistant") return;
+    const content = messageText(entry.payload.content);
+    if (!content || content.startsWith("<environment_context>")) return;
+    messages.push({ role, content, timestamp: entry.timestamp || summary.createdAt });
+  });
+  return { ...summary, messages };
+}
+
+async function deleteSession(file) {
+  const target = assertSessionFile(file);
+  const expectedId = path.basename(target, ".jsonl").slice(-36);
+  const summary = await sessionSummary(target);
+  if (!summary || (expectedId && summary.id !== expectedId && !path.basename(target).includes(summary.id)))
+    throw new Error("会话 ID 与文件不匹配，已拒绝删除");
+  await fs.unlink(target);
+  return true;
+}
+
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+async function resumeSession(file) {
+  const target = assertSessionFile(file);
+  const summary = await sessionSummary(target);
+  if (!summary) throw new Error("不支持恢复子代理会话");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(summary.id))
+    throw new Error("无效的会话 ID");
+  const resumeCommand = `codex resume ${summary.id}`;
+  let cwd;
+  if (summary.cwd?.trim()) {
+    try {
+      if ((await fs.stat(summary.cwd)).isDirectory()) cwd = summary.cwd;
+    } catch (_) {}
+  }
+
+  if (process.platform === "darwin") {
+    const command = cwd ? `cd ${shellQuote(cwd)} && ${resumeCommand}` : resumeCommand;
+    const script = `on run argv
+tell application "Terminal"
+  activate
+  do script (item 1 of argv)
+end tell
+end run`;
+    await new Promise((resolve, reject) => {
+      execFile("/usr/bin/osascript", ["-e", script, "--", command], (error) => error ? reject(new Error(`无法打开 Terminal.app：${error.message}`)) : resolve());
+    });
+  } else if (process.platform === "win32") {
+    const terminal = spawn(process.env.ComSpec || "cmd.exe", ["/d", "/k", "codex", "resume", summary.id], {
+      cwd, detached: true, stdio: "ignore", windowsHide: false,
+    });
+    await new Promise((resolve, reject) => {
+      terminal.once("spawn", resolve);
+      terminal.once("error", (error) => reject(new Error(`无法打开 Windows 终端：${error.message}`)));
+    });
+    terminal.unref();
+  } else if (process.platform === "linux") {
+    const shellCommand = `${resumeCommand}; exec \"\${SHELL:-/bin/sh}\" -l`;
+    const candidates = [
+      ["x-terminal-emulator", ["-e", "sh", "-lc", shellCommand]],
+      ["gnome-terminal", ["--", "sh", "-lc", shellCommand]],
+      ["konsole", ["-e", "sh", "-lc", shellCommand]],
+      ["xfce4-terminal", ["-e", `sh -lc ${shellQuote(shellCommand)}`]],
+      ["xterm", ["-e", "sh", "-lc", shellCommand]],
+    ];
+    let lastError;
+    for (const [executable, args] of candidates) {
+      try {
+        const terminal = spawn(executable, args, { cwd, detached: true, stdio: "ignore" });
+        await new Promise((resolve, reject) => {
+          terminal.once("spawn", resolve);
+          terminal.once("error", reject);
+        });
+        terminal.unref();
+        lastError = null;
+        break;
+      } catch (error) { lastError = error; }
+    }
+    if (lastError) throw new Error(`无法打开 Linux 终端：${lastError.message}`);
+  } else {
+    throw new Error(`当前平台暂不支持会话恢复：${process.platform}`);
+  }
+  return true;
+}
+
+const MODEL_PRICES = new Map([
+  ["gpt-6-astra", { input: 10, cached: 1, output: 50 }],
+  ["gpt-5.6-sol", { input: 4, cached: 0.4, output: 20 }],
+  ["gpt-5.6", { input: 4, cached: 0.4, output: 20 }],
+  ["gpt-5.6-terra", { input: 2, cached: 0.2, output: 12 }],
+  ["gpt-5.6-luna", { input: 0.2, cached: 0.02, output: 1.2 }],
+  ["gpt-5.5", { input: 5, cached: 0.5, output: 30 }],
+  ["gpt-5.4", { input: 2.5, cached: 0.25, output: 15 }],
+  ["gpt-5.4-mini", { input: 0.75, cached: 0.075, output: 4.5 }],
+  ["gpt-5.4-nano", { input: 0.2, cached: 0.02, output: 1.25 }],
+  ["gpt-5", { input: 1.25, cached: 0.125, output: 10 }],
+  ["gpt-5-mini", { input: 0.25, cached: 0.025, output: 2 }],
+  ["gpt-5-nano", { input: 0.05, cached: 0.005, output: 0.4 }],
+  ["gpt-4.1", { input: 2, cached: 0.5, output: 8 }],
+  ["gpt-4.1-mini", { input: 0.4, cached: 0.1, output: 1.6 }],
+  ["o3", { input: 2, cached: 0.5, output: 8 }],
+  ["o3-mini", { input: 1.1, cached: 0.55, output: 4.4 }],
+  ["qwen3.8-flash", { input: 0.15, cached: 0.016, output: 0.47 }],
+]);
+
+function normalizeCodexModel(raw) {
+  let model = String(raw || "unknown").toLowerCase();
+  if (model.includes("/")) model = model.slice(model.lastIndexOf("/") + 1);
+  model = model.replace(/-\d{4}-\d{2}-\d{2}$/, "").replace(/-\d{8}$/, "");
+  if (!MODEL_PRICES.has(model)) model = model.replace(/-(?:minimal|low|medium|high|xhigh)$/, "");
+  return model;
+}
+
+function estimateCost(model, usage) {
+  const price = MODEL_PRICES.get(normalizeCodexModel(model));
+  if (!price) return { cost: 0, priced: false };
+  const cached = Number(usage.cached_input_tokens || 0);
+  const input = Math.max(0, Number(usage.input_tokens || 0) - cached);
+  const output = Number(usage.output_tokens || 0);
+  return { cost: (input * price.input + cached * price.cached + output * price.output) / 1_000_000, priced: true };
+}
+
+function usageStart(range) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  if (range === "7d") start.setDate(start.getDate() - 6);
+  if (range === "30d") start.setDate(start.getDate() - 29);
+  return start;
+}
+
+function bucketKey(date, range) {
+  if (range === "today") return `${String(date.getHours()).padStart(2, "0")}:00`;
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+async function getUsageStatistics(range = "today") {
+  const safeRange = ["today", "7d", "30d"].includes(range) ? range : "today";
+  const start = usageStart(safeRange);
+  const rows = [];
+  await Promise.all((await sessionFiles()).map(async (file) => {
+    let currentModel = "unknown";
+    let highWater = null;
+    let lastSignature = "";
+    let eventIndex = 0;
+    let sessionId = "";
+    let isSubagent = false;
+    const fileRows = [];
+    await readJsonLines(file, (entry) => {
+      if (entry.type === "session_meta") {
+        sessionId = entry.payload?.id || entry.payload?.session_id || sessionId;
+        isSubagent = entry.payload?.source === "subagent" || Boolean(entry.payload?.source?.subagent) || Boolean(entry.payload?.parent_thread_id);
+      }
+      if (isSubagent) return;
+      if (entry.type === "turn_context" && entry.payload?.model) currentModel = normalizeCodexModel(entry.payload.model);
+      if (entry.type !== "event_msg" || entry.payload?.type !== "token_count") return;
+      const date = new Date(entry.timestamp);
+      if (Number.isNaN(date.getTime())) return;
+      const info = entry.payload?.info;
+      if (!info) return;
+      if (info.model || info.model_name) currentModel = normalizeCodexModel(info.model || info.model_name);
+      const total = info.total_token_usage;
+      const last = info.last_token_usage;
+      if (!total && !last) return;
+      const signature = JSON.stringify({ total, last });
+      if (signature === lastSignature) return;
+      lastSignature = signature;
+      const counter = (value) => ({
+        input_tokens: Number(value?.input_tokens || 0),
+        cached_input_tokens: Math.min(Number(value?.cached_input_tokens || value?.cache_read_input_tokens || 0), Number(value?.input_tokens || 0)),
+        output_tokens: Number(value?.output_tokens || 0),
+      });
+      let usage;
+      if (last && Object.keys(last).length) usage = counter(last);
+      else {
+        const current = counter(total);
+        usage = highWater ? {
+          input_tokens: Math.max(0, current.input_tokens - highWater.input_tokens),
+          cached_input_tokens: Math.max(0, current.cached_input_tokens - highWater.cached_input_tokens),
+          output_tokens: Math.max(0, current.output_tokens - highWater.output_tokens),
+        } : current;
+      }
+      if (total) {
+        const current = counter(total);
+        highWater = highWater ? {
+          input_tokens: Math.max(highWater.input_tokens, current.input_tokens),
+          cached_input_tokens: Math.max(highWater.cached_input_tokens, current.cached_input_tokens),
+          output_tokens: Math.max(highWater.output_tokens, current.output_tokens),
+        } : current;
+      }
+      if (!usage.input_tokens && !usage.cached_input_tokens && !usage.output_tokens) return;
+      if (date < start) return;
+      eventIndex += 1;
+      const estimated = estimateCost(currentModel, usage);
+      fileRows.push({
+        id: `codex_session:${sessionId || path.basename(file)}:${eventIndex}`,
+        timestamp: entry.timestamp,
+        model: currentModel,
+        inputTokens: usage.input_tokens,
+        cacheReadTokens: usage.cached_input_tokens,
+        outputTokens: usage.output_tokens,
+        totalTokens: usage.input_tokens + usage.output_tokens,
+        cost: estimated.cost,
+        priced: estimated.priced,
+        status: 200,
+        dataSource: "codex_session",
+      });
+    });
+    rows.push(...fileRows);
+  }));
+  rows.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const pointCount = safeRange === "today" ? 24 : safeRange === "7d" ? 7 : 30;
+  const points = Array.from({ length: pointCount }, (_, index) => {
+    const date = new Date(start);
+    if (safeRange === "today") date.setHours(index); else date.setDate(start.getDate() + index);
+    return { label: bucketKey(date, safeRange), requests: 0, tokens: 0, cost: 0 };
+  });
+  const pointMap = new Map(points.map((point) => [point.label, point]));
+  const modelMap = new Map();
+  for (const row of rows) {
+    const point = pointMap.get(bucketKey(new Date(row.timestamp), safeRange));
+    if (point) { point.requests += 1; point.tokens += row.totalTokens; point.cost += row.cost; }
+    const model = modelMap.get(row.model) || { model: row.model, requests: 0, tokens: 0, cost: 0 };
+    model.requests += 1; model.tokens += row.totalTokens; model.cost += row.cost;
+    modelMap.set(row.model, model);
+  }
+  return {
+    range: safeRange,
+    summary: {
+      requests: rows.length,
+      tokens: rows.reduce((sum, row) => sum + row.totalTokens, 0),
+      cost: rows.reduce((sum, row) => sum + row.cost, 0),
+      unpricedRequests: rows.filter((row) => !row.priced).length,
+    },
+    points,
+    models: [...modelMap.values()].sort((a, b) => b.tokens - a.tokens),
+    logs: rows,
+  };
 }
 
 function validateProfileName(name) {
@@ -381,6 +758,54 @@ function normalizeBaseUrl(baseUrl) {
 function endpointUrl(baseUrl, endpoint) {
   const suffix = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   return `${normalizeBaseUrl(baseUrl)}${suffix}`;
+}
+
+function proxyRulesFromEnvironment() {
+  const raw = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.ALL_PROXY || process.env.all_proxy || process.env.HTTP_PROXY || process.env.http_proxy;
+  if (!raw) return null;
+  try {
+    const proxy = new URL(raw);
+    const address = `${proxy.hostname}${proxy.port ? `:${proxy.port}` : ""}`;
+    if (proxy.protocol === "socks:" || proxy.protocol === "socks5:") return `socks5=${address}`;
+    if (proxy.protocol === "http:" || proxy.protocol === "https:") return `http=${address};https=${address}`;
+  } catch (_) {}
+  return null;
+}
+
+async function apiNetworkSession() {
+  if (!apiNetworkSessionPromise) {
+    apiNetworkSessionPromise = (async () => {
+      const networkSession = session.fromPartition("persist:codex-switcher-api");
+      const proxyRules = proxyRulesFromEnvironment();
+      if (proxyRules) {
+        const bypass = process.env.NO_PROXY || process.env.no_proxy || "localhost,127.0.0.1,::1";
+        await networkSession.setProxy({ mode: "fixed_servers", proxyRules, proxyBypassRules: bypass.split(",").map((item) => item.trim()).filter(Boolean).join(";") });
+      } else {
+        await networkSession.setProxy({ mode: "system" });
+      }
+      return networkSession;
+    })();
+  }
+  return apiNetworkSessionPromise;
+}
+
+function networkFailureMessage(error) {
+  const messages = [];
+  let current = error;
+  while (current && messages.length < 3) {
+    const value = current.code ? `${current.code}: ${current.message || ""}` : current.message;
+    if (value && !messages.includes(value)) messages.push(value);
+    current = current.cause;
+  }
+  return messages.join("；") || "未知网络错误";
+}
+
+async function apiFetch(url, options) {
+  try {
+    return await (await apiNetworkSession()).fetch(url, options);
+  } catch (error) {
+    throw new Error(`网络请求失败：${networkFailureMessage(error)}`);
+  }
 }
 
 async function readJsonResponse(response) {
@@ -679,7 +1104,7 @@ async function downloadUpdate(updateInfo, webContents) {
 }
 
 async function loadModels({ baseUrl, apiKey }) {
-  const response = await fetch(endpointUrl(baseUrl, "/models"), {
+  const response = await apiFetch(endpointUrl(baseUrl, "/models"), {
     method: "GET",
     headers: {
       Authorization: `Bearer ${apiKey || ""}`,
@@ -705,7 +1130,7 @@ async function testConnection({ baseUrl, apiKey, model }) {
     "Content-Type": "application/json",
     Accept: "application/json",
   };
-  const responsesResult = await fetch(endpointUrl(baseUrl, "/responses"), {
+  const responsesResult = await apiFetch(endpointUrl(baseUrl, "/responses"), {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -714,19 +1139,14 @@ async function testConnection({ baseUrl, apiKey, model }) {
       max_output_tokens: 8,
     }),
   });
-  if (responsesResult.ok) return { ok: true };
+  if (responsesResult.ok) return { ok: true, status: responsesResult.status, endpoint: "/responses", body: null };
 
   const responsesBody = await readJsonResponse(responsesResult);
   if (![400, 404, 405].includes(responsesResult.status)) {
-    throw new Error(
-      responseErrorMessage(
-        responsesBody,
-        t("connectionFailed", responsesResult.status),
-      ),
-    );
+    return { ok: false, status: responsesResult.status, endpoint: "/responses", body: responsesBody };
   }
 
-  const chatResult = await fetch(endpointUrl(baseUrl, "/chat/completions"), {
+  const chatResult = await apiFetch(endpointUrl(baseUrl, "/chat/completions"), {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -735,11 +1155,9 @@ async function testConnection({ baseUrl, apiKey, model }) {
       max_tokens: 8,
     }),
   });
-  if (chatResult.ok) return { ok: true };
+  if (chatResult.ok) return { ok: true, status: chatResult.status, endpoint: "/chat/completions", body: null };
   const chatBody = await readJsonResponse(chatResult);
-  throw new Error(
-    responseErrorMessage(chatBody, t("connectionFailed", chatResult.status)),
-  );
+  return { ok: false, status: chatResult.status, endpoint: "/chat/completions", body: chatBody };
 }
 
 async function saveProfile({
@@ -1077,6 +1495,11 @@ ipcMain.handle("codex:apply-profile", async (_, name) => {
 });
 ipcMain.handle("codex:load-models", (_, payload) => loadModels(payload));
 ipcMain.handle("codex:test-connection", (_, payload) => testConnection(payload));
+ipcMain.handle("codex:list-sessions", () => listSessions());
+ipcMain.handle("codex:get-session", (_, file) => getSession(file));
+ipcMain.handle("codex:delete-session", (_, file) => deleteSession(file));
+ipcMain.handle("codex:resume-session", (_, file) => resumeSession(file));
+ipcMain.handle("codex:usage-statistics", (_, range) => getUsageStatistics(range));
 ipcMain.on("codex:set-language", (_, language) => {
   mainLanguage = language === "en" ? "en" : "zh";
   refreshTrayMenu().catch(() => {});

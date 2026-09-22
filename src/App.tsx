@@ -35,6 +35,8 @@ import {
   PlayCircleFilled,
   PlusOutlined,
   BorderOutlined,
+  BarChartOutlined,
+  DatabaseOutlined,
   ReloadOutlined,
   SaveOutlined,
   SettingOutlined,
@@ -56,6 +58,8 @@ import {
   type TranslationText,
 } from "./i18n";
 import { latencyClassName } from "./utils/latency";
+import SessionManager from "./components/SessionManager";
+import UsageStats from "./components/UsageStats";
 
 const { Sider, Content } = Layout;
 const { Text, Title } = Typography;
@@ -119,6 +123,8 @@ function App() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [sessionManagerOpen, setSessionManagerOpen] = useState(false);
+  const [usageStatsOpen, setUsageStatsOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<CodexUpdateInfo>();
   const [updateOpen, setUpdateOpen] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
@@ -509,8 +515,28 @@ function App() {
     const startedAt = performance.now();
     try {
       setTesting(true);
-      await window.codexAPI.testConnection({ baseUrl, apiKey, model });
+      const result = await window.codexAPI.testConnection({ baseUrl, apiKey, model });
       const latency = Math.round(performance.now() - startedAt);
+      if (!result.ok) {
+        const responseBody = typeof result.body === "string" ? result.body : JSON.stringify(result.body ?? {}, null, 2);
+        modalApi.error({
+          title: t.testFailedTitle,
+          centered: true,
+          width: 620,
+          content: (
+            <div className="connection-test-result">
+              <div>{t.model}: {model}</div>
+              <div>{languageMode === "zh" ? "状态码" : "Status"}: <span className="connection-status-code">{result.status}</span></div>
+              <div>{languageMode === "zh" ? "请求端点" : "Endpoint"}: <code>{result.endpoint}</code></div>
+              <div>{t.latency}: <span className={`connection-latency ${latencyClassName(latency)}`}>{latency} ms</span></div>
+              <div className="connection-response-label">{languageMode === "zh" ? "响应体" : "Response body"}</div>
+              <pre className="connection-response-body">{responseBody}</pre>
+            </div>
+          ),
+          okText: t.ok,
+        });
+        return;
+      }
       modalApi.success({
         title: t.testSuccessTitle,
         centered: true,
@@ -735,6 +761,39 @@ function App() {
           </div>
         )}
       </div>
+      <Button
+        type="text"
+        className="settings-about-button"
+        icon={<DatabaseOutlined />}
+        onClick={() => {
+          setSettingsOpen(false);
+          setSessionManagerOpen(true);
+        }}
+      >
+        {languageMode === "zh" ? "会话管理" : "Session management"}
+      </Button>
+      <Button
+        type="text"
+        className="settings-about-button"
+        icon={<BarChartOutlined />}
+        onClick={() => {
+          setSettingsOpen(false);
+          setUsageStatsOpen(true);
+        }}
+      >
+        {languageMode === "zh" ? "用量统计" : "Usage statistics"}
+      </Button>
+      {updateInfo?.hasUpdate && (
+        <Button
+          type="primary"
+          danger
+          className="settings-about-button settings-upgrade-button"
+          icon={<DownloadOutlined />}
+          onClick={handleOpenUpdate}
+        >
+          {t.upgrade}
+        </Button>
+      )}
       {hasCodexConfig && (
         <Button
           type="text"
@@ -756,17 +815,6 @@ function App() {
       >
         {t.about}
       </Button>
-      {updateInfo?.hasUpdate && (
-        <Button
-          type="primary"
-          danger
-          className="settings-about-button settings-upgrade-button"
-          icon={<DownloadOutlined />}
-          onClick={handleOpenUpdate}
-        >
-          {t.upgrade}
-        </Button>
-      )}
     </div>
   );
 
@@ -1059,7 +1107,7 @@ function App() {
                                   <Input.Password
                                     size="large"
                                     placeholder={t.apiKeyPlaceholder}
-                                    prefix={<LockOutlined />}
+                                    prefix={<LockOutlined className="input-prefix" />}
                                   />
                                 </Form.Item>
                                 <Form.Item
@@ -1192,6 +1240,30 @@ function App() {
             </Content>
           </Layout>
         </Layout>
+
+        <Drawer
+          open={sessionManagerOpen}
+          title={languageMode === "zh" ? "会话管理" : "Session management"}
+          placement="right"
+          width="100%"
+          destroyOnClose
+          rootClassName="feature-fullscreen-drawer"
+          onClose={() => setSessionManagerOpen(false)}
+        >
+          <SessionManager language={languageMode} />
+        </Drawer>
+
+        <Drawer
+          open={usageStatsOpen}
+          title={languageMode === "zh" ? "用量统计" : "Usage statistics"}
+          placement="right"
+          width="100%"
+          destroyOnClose
+          rootClassName="feature-fullscreen-drawer"
+          onClose={() => setUsageStatsOpen(false)}
+        >
+          <UsageStats language={languageMode} />
+        </Drawer>
 
         <Modal
           open={createOpen}

@@ -42,13 +42,11 @@ function SingleCreatableSelect({
 
   return (
     <div className="single-creatable-control">
-      {prefixIcon && (
-        <span className="single-creatable-prefix">{prefixIcon}</span>
-      )}
       <Select
         showSearch
         allowClear
         size="large"
+        prefix={prefixIcon}
         value={value || undefined}
         searchValue={searchValue}
         placeholder={placeholder}

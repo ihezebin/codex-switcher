@@ -33,6 +33,41 @@ interface CodexUpdateProgress {
   total: number;
 }
 
+interface CodexSessionSummary {
+  id: string;
+  file: string;
+  title: string;
+  cwd: string;
+  createdAt: string;
+  updatedAt: string;
+  model: string;
+  messageCount: number;
+}
+
+interface CodexSessionDetail extends CodexSessionSummary {
+  messages: Array<{ role: "user" | "assistant"; content: string; timestamp: string }>;
+}
+
+interface CodexUsageStatistics {
+  range: "today" | "7d" | "30d";
+  summary: { requests: number; tokens: number; cost: number; unpricedRequests: number };
+  points: Array<{ label: string; requests: number; tokens: number; cost: number }>;
+  models: Array<{ model: string; requests: number; tokens: number; cost: number }>;
+  logs: Array<{
+    id: string;
+    timestamp: string;
+    model: string;
+    inputTokens: number;
+    cacheReadTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cost: number;
+    priced: boolean;
+    status: number | null;
+    dataSource: "codex_session" | "proxy";
+  }>;
+}
+
 interface Window {
   codexAPI: {
     platform: string;
@@ -60,7 +95,12 @@ interface Window {
       profiles: CodexProfile[];
     }>;
     loadModels: (payload: { baseUrl: string; apiKey: string }) => Promise<string[]>;
-    testConnection: (payload: { baseUrl: string; apiKey: string; model: string }) => Promise<{ ok: boolean }>;
+    testConnection: (payload: { baseUrl: string; apiKey: string; model: string }) => Promise<{ ok: boolean; status: number; endpoint: string; body: unknown }>;
+    listSessions: () => Promise<CodexSessionSummary[]>;
+    getSession: (file: string) => Promise<CodexSessionDetail>;
+    deleteSession: (file: string) => Promise<boolean>;
+    resumeSession: (file: string) => Promise<boolean>;
+    getUsageStatistics: (range: "today" | "7d" | "30d") => Promise<CodexUsageStatistics>;
     setLanguage: (language: "zh" | "en") => void;
     checkUpdates: () => Promise<CodexUpdateInfo>;
     downloadUpdate: () => Promise<CodexUpdateInfo>;
