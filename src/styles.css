@@ -479,6 +479,16 @@ html[data-theme="dark"] .profile-name {
   margin-right: 0;
   font-size: 11px;
 }
+.settings-checking-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: #1677ff;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.settings-checking-status > .anticon { font-size: 13px; }
 .empty-settings-button {
   width: auto;
 }
@@ -682,6 +692,8 @@ html[data-theme="dark"] .feature-fullscreen-drawer .ant-drawer-body {
 .usage-summary-card::after { position: absolute; right: -22px; bottom: -42px; width: 120px; height: 120px; border-radius: 50%; background: currentColor; content: ""; opacity: 0.055; }
 .usage-summary-card .ant-card-body { display: flex; align-items: center; gap: 16px; padding: 20px; }
 .usage-summary-card .ant-statistic { min-width: 0; }
+.usage-summary-content { min-width: 0; }
+.usage-token-compact { margin-top: 5px; margin-inline-end: 0; font-size: 11px; font-variant-numeric: tabular-nums; }
 .usage-summary-icon { display: grid; width: 48px; height: 48px; flex: 0 0 48px; place-items: center; border-radius: 14px; font-size: 22px; }
 .usage-summary-card.tokens { color: #1677ff; background: linear-gradient(135deg, #f7fbff, #eef6ff); }
 .usage-summary-card.requests { color: #13a8a8; background: linear-gradient(135deg, #f5fffd, #eafbf8); }
@@ -824,8 +836,8 @@ html[data-theme="dark"] .main-content {
   min-width: 0;
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 10px;
 }
 .detail-header h2 {
   margin: 1px 0 4px;
@@ -843,6 +855,7 @@ html[data-theme="dark"] .detail-header h2 {
 .detail-header-actions {
   flex: 0 0 auto;
   align-items: center;
+  margin-left: auto;
 }
 .delete-profile-button,
 .edit-profile-name-button,

@@ -1,13 +1,13 @@
 {
   "name": "codex-switcher",
-  "version": "0.1.3",
+  "version": "0.1.2",
   "private": true,
   "description": "A desktop profile switcher for Codex configuration",
   "main": "dist-electron/main/index.js",
   "codexSwitcherUpdate": {
-    "notes": "add session management and token stats, and add more fonts support",
+    "notes": "新增会话管理和用量统计功能，在设置中可查看使用。另外新增了多字体切换功能，和其他整体交互体验优化~",
     "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.3",
-    "minimumVersion": "",
+    "minimumVersion": "0.1.3",
     "proxyBaseUrl": "https://ghfast.top/",
     "downloads": {
       "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.3/Codex.Switcher-0.1.3-mac-arm64.dmg",

@@ -19,6 +19,7 @@ const { pipeline } = require("node:stream/promises");
 const { execFile, spawn } = require("node:child_process");
 const path = require("node:path");
 const os = require("node:os");
+const { isDeepStrictEqual } = require("node:util");
 const TOML = require("@iarna/toml");
 
 const PROFILE_SUFFIX = ".config.toml";
@@ -705,17 +706,38 @@ function profileFromToml(name, value, source = "") {
   };
 }
 
+function profileMatchesConfig(profile, config) {
+  if (!profile || !config) return false;
+  const scalarKeys = ["model", "review_model", "model_provider"];
+  let compared = false;
+  for (const key of scalarKeys) {
+    if (profile[key] === undefined) continue;
+    compared = true;
+    if (!isDeepStrictEqual(profile[key], config[key])) return false;
+  }
+  if (profile.model_providers !== undefined) {
+    compared = true;
+    const configuredProviders = config.model_providers || {};
+    for (const [providerId, provider] of Object.entries(profile.model_providers)) {
+      if (!isDeepStrictEqual(provider, configuredProviders[providerId])) return false;
+    }
+  }
+  return compared;
+}
+
 async function listProfiles() {
   const home = await ensureCodexHome();
   const hasCodexConfig = await hasFile(configPath());
   const entries = await fs.readdir(home, { withFileTypes: true });
   const files = await orderedProfileEntries(home, entries);
   const profiles = [];
+  const profileValues = new Map();
   for (const item of files) {
     const { entry, name } = item;
     try {
       const { value, source } = await readTomlFile(path.join(home, entry.name));
       profiles.push(profileFromToml(name, value, source));
+      profileValues.set(name, value);
     } catch (error) {
       profiles.push({
         name,
@@ -734,11 +756,8 @@ async function listProfiles() {
   let active;
   try {
     const { value } = await readTomlFile(configPath());
-    const modelProvider = value.model_provider;
-    const model = value.model;
-    active = profiles.find(
-      (profile) =>
-        profile.providerId === modelProvider && profile.model === model,
+    active = profiles.find((profile) =>
+      profileMatchesConfig(profileValues.get(profile.name), value),
     )?.name;
   } catch (_) {
     // A broken base config is shown only when the user tries to apply a profile.

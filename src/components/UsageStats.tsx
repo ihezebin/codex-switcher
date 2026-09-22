@@ -8,6 +8,9 @@ type Range = "today" | "7d" | "30d";
 
 const number = new Intl.NumberFormat("en-US");
 const money = (value: number) => `$${value.toFixed(4)}`;
+const compactTokens = (value: number, zh: boolean) => zh
+  ? `≈ ${(value / 10_000).toFixed(2)} 万`
+  : `≈ ${(value / 1_000_000).toFixed(2)}M`;
 
 function TrendChart({ data, language }: { data: CodexUsageStatistics["points"]; language: "zh" | "en" }) {
   const [hovered, setHovered] = useState<number | null>(null);
@@ -82,7 +85,6 @@ export default function UsageStats({ language }: { language: "zh" | "en" }) {
     { title: zh ? "输入 Tokens" : "Input tokens", dataIndex: "inputTokens", width: 118, align: "right", render: (value, row) => <><div className="usage-token-breakdown"><span>{zh ? "非缓存" : "Uncached"}</span><strong className="usage-value tokens">{number.format(Math.max(0, value - row.cacheReadTokens))}</strong></div>{row.cacheReadTokens > 0 && <div className="usage-token-breakdown usage-cache-tokens"><span>{zh ? "缓存读取" : "Cache read"}</span><strong>{number.format(row.cacheReadTokens)}</strong></div>}</> },
     { title: zh ? "输出 Tokens" : "Output tokens", dataIndex: "outputTokens", width: 96, align: "right", render: (value) => <span className="usage-value tokens">{number.format(value)}</span> },
     { title: zh ? "总成本金额" : "Total cost", dataIndex: "cost", width: 108, align: "right", render: (value, row) => row.priced ? <span className="usage-value cost">{money(value)}</span> : <Text type="secondary">-</Text> },
-    { title: zh ? "状态" : "Status", dataIndex: "status", width: 72, align: "center", render: (value) => value == null ? "-" : <Tag color={value >= 200 && value < 300 ? "success" : "error"}>{value}</Tag> },
   ], [zh]);
 
   return (
@@ -91,12 +93,11 @@ export default function UsageStats({ language }: { language: "zh" | "en" }) {
       <div className="usage-toolbar"><div><Title level={3}>{zh ? "用量统计" : "Usage statistics"}</Title><Text type="secondary">{zh ? "查看 AI 模型的使用情况和成本统计" : "View AI model usage and cost statistics"}</Text></div><div className="usage-range-actions"><Tooltip title={zh ? "刷新统计" : "Refresh statistics"}><Button icon={<ReloadOutlined />} loading={loading} onClick={() => setRefreshKey((value) => value + 1)} aria-label={zh ? "刷新统计" : "Refresh statistics"} /></Tooltip><Segmented value={range} onChange={(value) => setRange(value as Range)} options={[{ label: zh ? "当天" : "Today", value: "today" }, { label: zh ? "7 天" : "7 days", value: "7d" }, { label: zh ? "1 个月" : "1 month", value: "30d" }]} /></div></div>
       {loading || !data ? <Skeleton active paragraph={{ rows: 16 }} /> : <>
         <div className="usage-summary-grid">
-          <Card className="usage-summary-card tokens"><div className="usage-summary-icon"><ThunderboltOutlined /></div><Statistic title={zh ? "总 Tokens 消耗" : "Total tokens"} value={data.summary.tokens} formatter={(value) => number.format(Number(value))} /></Card>
+          <Card className="usage-summary-card tokens"><div className="usage-summary-icon"><ThunderboltOutlined /></div><div className="usage-summary-content"><Statistic title={zh ? "总 Tokens 消耗" : "Total tokens"} value={data.summary.tokens} formatter={(value) => number.format(Number(value))} /><Tag className="usage-token-compact" color="blue">{compactTokens(data.summary.tokens, zh)}</Tag></div></Card>
           <Card className="usage-summary-card requests"><div className="usage-summary-icon"><ApiOutlined /></div><Statistic title={zh ? "总请求数" : "Total requests"} value={data.summary.requests} /></Card>
           <Card className="usage-summary-card cost"><div className="usage-summary-icon"><DollarOutlined /></div><Statistic title={zh ? "总成本金额（估算）" : "Estimated cost"} value={data.summary.cost} precision={4} prefix="$" /></Card>
         </div>
         {data.summary.unpricedRequests > 0 && <Text className="usage-cost-note" type="secondary">{zh ? `有 ${data.summary.unpricedRequests} 条未知模型请求无法匹配单价，成本按 $0 计。` : `${data.summary.unpricedRequests} requests use models without known pricing and count as $0.`}</Text>}
-        <Text className="usage-cost-note" type="secondary">{zh ? "产生计费 Token 的会话记录状态记为 200。" : "Session records with billable tokens use status 200."}</Text>
         <Card className="usage-section"><Title level={4}>{zh ? "趋势概览" : "Trends"}</Title><TrendChart data={data.points} language={language} /></Card>
         <Card className="usage-section"><Title level={4}>{zh ? "模型统计" : "Model statistics"}</Title><Table rowKey="model" size="middle" pagination={false} columns={modelColumns} dataSource={data.models} /></Card>
         <Card className="usage-section"><Title level={4}>{zh ? "请求日志" : "Request logs"}</Title><Table rowKey="id" size="middle" tableLayout="fixed" pagination={{ current: logPage, pageSize: logPageSize, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], showTotal: (total) => zh ? `共 ${total} 条` : `${total} items`, onChange: (page, pageSize) => { setLogPage(pageSize === logPageSize ? page : 1); setLogPageSize(pageSize); } }} columns={logColumns} dataSource={data.logs} /></Card>

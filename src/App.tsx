@@ -28,6 +28,7 @@ import {
   FolderOpenOutlined,
   GlobalOutlined,
   InfoCircleOutlined,
+  LoadingOutlined,
   LockOutlined,
   MoonOutlined,
   MinusOutlined,
@@ -272,6 +273,7 @@ function App() {
     const checkUpdates = async () => {
       if (checking) return;
       checking = true;
+      if (!disposed) setCheckingUpdate(true);
       try {
         const info = await window.codexAPI.checkUpdates();
         if (!disposed) setUpdateInfo(info);
@@ -279,6 +281,7 @@ function App() {
         // Network or GitHub availability should not block normal profile switching.
       } finally {
         checking = false;
+        if (!disposed) setCheckingUpdate(false);
       }
     };
 
@@ -304,6 +307,9 @@ function App() {
   const selectedIndex = useMemo(
     () => profiles.findIndex((profile) => profile.name === selectedName),
     [profiles, selectedName],
+  );
+  const selectedIsActive = profiles.some(
+    (profile) => profile.name === selected?.name && profile.active,
   );
 
   const selectProfile = (name: string) => {
@@ -817,11 +823,16 @@ function App() {
   const settingsButton = (className = "settings-button") => (
     <Button type="text" className={className} icon={<SettingOutlined />}>
       <span>{t.settings}</span>
-      {updateInfo?.hasUpdate && (
+      {checkingUpdate ? (
+        <span className="settings-checking-status">
+          <LoadingOutlined spin />
+          <span>{languageMode === "zh" ? "检测新版本中" : "Checking for updates"}</span>
+        </span>
+      ) : updateInfo?.hasUpdate ? (
         <Tag color="red" className="update-tag">
           {t.newVersion}
         </Tag>
-      )}
+      ) : null}
     </Button>
   );
 
@@ -1028,6 +1039,14 @@ function App() {
                               </Text>
                               <div className="detail-title-row">
                                 <Title level={2}>{selected.name}</Title>
+                                {selectedIsActive && (
+                                  <Tag
+                                    className="active-tag"
+                                    icon={<CheckCircleFilled />}
+                                  >
+                                    {t.currentApplied}
+                                  </Tag>
+                                )}
                                 <Space
                                   className="detail-header-actions"
                                   size={12}
@@ -1047,14 +1066,6 @@ function App() {
                                   >
                                     {t.editConfigName}
                                   </Button>
-                                  {selected.active && (
-                                    <Tag
-                                      className="active-tag"
-                                      icon={<CheckCircleFilled />}
-                                    >
-                                      {t.currentApplied}
-                                    </Tag>
-                                  )}
                                 </Space>
                               </div>
                               <Text className="detail-description">
@@ -1460,7 +1471,7 @@ function App() {
                 <Button
                   type="primary"
                   icon={<DownloadOutlined />}
-                  loading={downloadingUpdate}
+                  loading={checkingUpdate || downloadingUpdate}
                   disabled={checkingUpdate || !updateInfo?.downloadUrl}
                   onClick={handleDownloadUpdate}
                 >
