@@ -1,6 +1,7 @@
 const {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -16,7 +17,6 @@ const readline = require("node:readline");
 const { DatabaseSync } = require("node:sqlite");
 const { Transform } = require("node:stream");
 const { pipeline } = require("node:stream/promises");
-const { execFile, spawn } = require("node:child_process");
 const path = require("node:path");
 const os = require("node:os");
 const { isDeepStrictEqual } = require("node:util");
@@ -495,6 +495,10 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
+function windowsShellQuote(value) {
+  return `"${String(value).replace(/(["\\])/g, "\\$1")}"`;
+}
+
 async function resumeSession(file) {
   const target = assertSessionFile(file);
   const summary = await sessionSummary(target);
@@ -509,52 +513,12 @@ async function resumeSession(file) {
     } catch (_) {}
   }
 
-  if (process.platform === "darwin") {
-    const command = cwd ? `cd ${shellQuote(cwd)} && ${resumeCommand}` : resumeCommand;
-    const script = `on run argv
-tell application "Terminal"
-  activate
-  do script (item 1 of argv)
-end tell
-end run`;
-    await new Promise((resolve, reject) => {
-      execFile("/usr/bin/osascript", ["-e", script, "--", command], (error) => error ? reject(new Error(`无法打开 Terminal.app：${error.message}`)) : resolve());
-    });
-  } else if (process.platform === "win32") {
-    const terminal = spawn(process.env.ComSpec || "cmd.exe", ["/d", "/k", "codex", "resume", summary.id], {
-      cwd, detached: true, stdio: "ignore", windowsHide: false,
-    });
-    await new Promise((resolve, reject) => {
-      terminal.once("spawn", resolve);
-      terminal.once("error", (error) => reject(new Error(`无法打开 Windows 终端：${error.message}`)));
-    });
-    terminal.unref();
-  } else if (process.platform === "linux") {
-    const shellCommand = `${resumeCommand}; exec \"\${SHELL:-/bin/sh}\" -l`;
-    const candidates = [
-      ["x-terminal-emulator", ["-e", "sh", "-lc", shellCommand]],
-      ["gnome-terminal", ["--", "sh", "-lc", shellCommand]],
-      ["konsole", ["-e", "sh", "-lc", shellCommand]],
-      ["xfce4-terminal", ["-e", `sh -lc ${shellQuote(shellCommand)}`]],
-      ["xterm", ["-e", "sh", "-lc", shellCommand]],
-    ];
-    let lastError;
-    for (const [executable, args] of candidates) {
-      try {
-        const terminal = spawn(executable, args, { cwd, detached: true, stdio: "ignore" });
-        await new Promise((resolve, reject) => {
-          terminal.once("spawn", resolve);
-          terminal.once("error", reject);
-        });
-        terminal.unref();
-        lastError = null;
-        break;
-      } catch (error) { lastError = error; }
-    }
-    if (lastError) throw new Error(`无法打开 Linux 终端：${lastError.message}`);
-  } else {
-    throw new Error(`当前平台暂不支持会话恢复：${process.platform}`);
-  }
+  const command = cwd
+    ? process.platform === "win32"
+      ? `cd /d ${windowsShellQuote(cwd)} && ${resumeCommand}`
+      : `cd ${shellQuote(cwd)} && ${resumeCommand}`
+    : resumeCommand;
+  clipboard.writeText(command);
   return true;
 }
 

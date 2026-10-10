@@ -89,7 +89,7 @@ export default function SessionManager({ language }: { language: "zh" | "en" }) 
     setResuming(true);
     try {
       await window.codexAPI.resumeSession(file);
-      messageApi.success(zh ? "已在终端中恢复会话" : "Session resumed in Terminal");
+      messageApi.success(zh ? "复制命令成功" : "Command copied successfully");
     } catch (error) { messageApi.error((error as Error).message); }
     finally { setResuming(false); }
   };
