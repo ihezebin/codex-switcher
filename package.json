@@ -1,18 +1,18 @@
 {
   "name": "codex-switcher",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "A desktop profile switcher for Codex configuration",
   "main": "dist-electron/main/index.js",
   "codexSwitcherUpdate": {
-    "notes": "新增会话管理和用量统计功能，在设置中可查看使用。另外新增了多字体切换功能，和其他整体交互体验优化~",
-    "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.3",
+    "notes": "会话恢复改为仅复制命令，不再直接打开系统默认命令行窗口~",
+    "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.4",
     "minimumVersion": "0.1.3",
     "proxyBaseUrl": "https://ghfast.top/",
     "downloads": {
-      "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.3/Codex.Switcher-0.1.3-mac-arm64.dmg",
-      "darwin-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.3/Codex.Switcher-0.1.3-mac-x64.dmg",
-      "win32-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.3/Codex.Switcher-0.1.3-win-x64.exe",
+      "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.4/Codex.Switcher-0.1.4-mac-arm64.dmg",
+      "darwin-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.4/Codex.Switcher-0.1.4-mac-x64.dmg",
+      "win32-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.4/Codex.Switcher-0.1.4-win-x64.exe",
       "linux-x64": ""
     }
   },
