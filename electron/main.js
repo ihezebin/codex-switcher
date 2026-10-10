@@ -1122,21 +1122,42 @@ function readResponseSnippet(response) {
   });
 }
 
-function requestUpdateDownload(url) {
+async function requestUpdateDownload(url, { probe = false } = {}) {
+  const networkSession = await apiNetworkSession();
   return new Promise((resolve, reject) => {
     let redirectCount = 0;
+    let settled = false;
+    let transferred = 0;
+    const startedAt = performance.now();
+    const sampleBytes = 1024 * 1024;
     const request = net.request({
+      session: networkSession,
       method: "GET",
       url,
       redirect: "manual",
     });
-    const timeout = setTimeout(() => {
+    const finishProbe = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error || !transferred) reject(error || new Error("empty download probe"));
+      else resolve(transferred / Math.max(1, performance.now() - startedAt));
       request.abort();
-      reject(new Error("request timeout"));
-    }, 30_000);
+    };
+    const timeout = setTimeout(() => {
+      if (probe) finishProbe(transferred ? null : new Error("request timeout"));
+      else {
+        request.abort();
+        reject(new Error("request timeout"));
+      }
+    }, probe ? 5_000 : 30_000);
 
     request.setHeader("User-Agent", "Codex-Switcher");
     request.setHeader("Accept", "application/octet-stream,*/*");
+    if (probe) {
+      request.setHeader("Range", `bytes=0-${sampleBytes - 1}`);
+      request.setHeader("Cache-Control", "no-cache");
+    }
 
     request.on("redirect", () => {
       redirectCount += 1;
@@ -1149,8 +1170,22 @@ function requestUpdateDownload(url) {
       request.followRedirect();
     });
     request.on("response", async (response) => {
-      clearTimeout(timeout);
+      if (!probe) clearTimeout(timeout);
       const { statusCode = 0 } = response;
+      if (probe) {
+        if (statusCode !== 200 && statusCode !== 206) {
+          finishProbe(new Error(t("downloadFailed", statusCode)));
+          return;
+        }
+        response.on("data", (chunk) => {
+          transferred += chunk.length;
+          if (transferred >= sampleBytes) finishProbe();
+        });
+        response.on("end", () => finishProbe());
+        response.on("error", (error) => finishProbe(error));
+        response.on("aborted", () => finishProbe(new Error("download probe aborted")));
+        return;
+      }
       if (statusCode < 200 || statusCode >= 300) {
         const snippet = await readResponseSnippet(response);
         reject(
@@ -1165,11 +1200,29 @@ function requestUpdateDownload(url) {
       resolve(response);
     });
     request.on("error", (error) => {
+      if (probe) {
+        finishProbe(error);
+        return;
+      }
       clearTimeout(timeout);
       reject(error);
     });
     request.end();
   });
+}
+
+async function rankUpdateDownloadCandidates(urls) {
+  const candidates = [...new Set(urls.filter(Boolean))];
+  if (candidates.length < 2) return candidates;
+  // Compare actual transferred bytes, including connection/redirect latency.
+  // Failed probes remain available as fallbacks (some servers reject Range).
+  const results = await Promise.allSettled(
+    candidates.map((url) => requestUpdateDownload(url, { probe: true })),
+  );
+  return candidates.map((url, index) => ({
+    url,
+    speed: results[index].status === "fulfilled" ? results[index].value : -1,
+  })).sort((a, b) => b.speed - a.speed).map(({ url }) => url);
 }
 
 async function openUpdateDownload(urls) {
@@ -1201,7 +1254,7 @@ async function downloadUpdate(updateInfo, webContents) {
   if (!updateInfo.downloadUrl) {
     throw new Error(t("missingDownloadUrl", updateInfo.platformKey));
   }
-  const response = await openUpdateDownload(updateDownloadCandidates(updateInfo));
+  const response = await openUpdateDownload(await rankUpdateDownloadCandidates(updateDownloadCandidates(updateInfo)));
   const total = Number(response.headers["content-length"] || 0);
   let transferred = 0;
   const updatesDir = path.join(app.getPath("userData"), "updates");

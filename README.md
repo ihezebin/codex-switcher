@@ -108,7 +108,9 @@ Windows 安装包支持自定义安装目录，并同时生成开始菜单和桌
 }
 ```
 
-`proxyBaseUrl` 用于 GitHub release 下载代理。默认值是 `https://ghfast.top/`，配置后会先尝试代理地址，例如 `https://ghfast.top/https://github.com/...`，代理失败后再回退原始 `downloads` 地址。如果不想使用代理，可以把 `proxyBaseUrl` 配成空字符串。
+`proxyBaseUrl` 用于 GitHub release 下载代理。默认值是 `https://ghfast.top/`，配置后会同时对代理地址（例如 `https://ghfast.top/https://github.com/...`）和原始 `downloads` 地址进行小段下载测速（每条链路最多约 1 MiB、最长 5 秒），按包含连接耗时的实测下载速度选择链路。正式请求失败重试后会回退另一条链路；测速失败的链路仍保留为备用。如果不想使用代理，可以把 `proxyBaseUrl` 配成空字符串。
+
+测速和正式下载共用网络代理配置：优先读取 `HTTPS_PROXY` / `https_proxy`、`ALL_PROXY` / `all_proxy`、`HTTP_PROXY` / `http_proxy`，并遵循 `NO_PROXY` / `no_proxy`；未配置有效的环境变量代理时使用系统代理。环境变量需由应用启动进程继承。
 
 `downloads` 的 key 使用 `${process.platform}-${process.arch}`：
 
