@@ -1,18 +1,18 @@
 {
   "name": "codex-switcher",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "A desktop profile switcher for Codex configuration",
   "main": "dist-electron/main/index.js",
   "codexSwitcherUpdate": {
-    "notes": "会话恢复改为仅复制命令，不再直接打开系统默认命令行窗口~",
-    "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.4",
-    "minimumVersion": "0.1.3",
+    "notes": "会话恢复改为仅复制命令，不再直接打开系统默认命令行窗口~ 严格实时保持 profile 和 config.toml 的同步和一致",
+    "releaseUrl": "https://github.com/ihezebin/codex-switcher/releases/tag/v0.1.5",
+    "minimumVersion": "0.1.5",
     "proxyBaseUrl": "https://ghfast.top/",
     "downloads": {
-      "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.4/Codex.Switcher-0.1.4-mac-arm64.dmg",
-      "darwin-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.4/Codex.Switcher-0.1.4-mac-x64.dmg",
-      "win32-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.4/Codex.Switcher-0.1.4-win-x64.exe",
+      "darwin-arm64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.5/Codex.Switcher-0.1.5-mac-arm64.dmg",
+      "darwin-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.5/Codex.Switcher-0.1.5-mac-x64.dmg",
+      "win32-x64": "https://github.com/ihezebin/codex-switcher/releases/download/v0.1.5/Codex.Switcher-0.1.5-win-x64.exe",
       "linux-x64": ""
     }
   },

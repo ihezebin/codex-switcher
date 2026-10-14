@@ -172,4 +172,6 @@ requires_openai_auth = false
 experimental_bearer_token = "sk-example"
 ```
 
-表单保存会重新序列化 TOML，避免重复 key。点击“应用配置”后，profile 中的 `model`、`review_model`、`model_provider` 和 `model_providers` 会合并写入 `$CODEX_HOME/config.toml`，其它已有顶层配置和 provider 会保留；profile 文件本身继续保留。自定义编辑器允许直接维护完整 TOML，并在保存前做语法校验。
+表单保存会重新序列化 TOML，避免重复 key。点击“应用配置”后，profile 中的 `model`、`review_model`、`model_provider` 和 `model_providers` 会合并写入 `$CODEX_HOME/config.toml`，其它已有顶层配置会保留；profile 文件本身继续保留。自定义编辑器允许直接维护完整 TOML，并在保存前做语法校验。
+
+`config.toml` 中的 `model_providers` 始终以磁盘上的 profile 文件为准自动同步：加载或刷新配置列表、保存、重命名、删除配置时都会校验——缺失的 provider 会自动补上，同名但内容不同的以 profile 文件为准，没有对应 profile 的 provider 会被清理。重命名配置会同步改写 profile 内容中的 provider id，若该配置正在使用中，`config.toml` 的 `model_provider` 也会一并跟随。注意 `openai` 是 Codex 内置 provider 名称，不能作为配置名称。若存在无法解析的 profile 文件，为避免误删其 provider，会暂时跳过孤儿 provider 清理。

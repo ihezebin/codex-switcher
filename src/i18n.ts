@@ -65,8 +65,8 @@ export const translations = {
     en: "Enter or select a review model, e.g. gpt-5.5",
   },
   createNamePlaceholder: {
-    zh: "例如：work、qwen、openai",
-    en: "e.g. work, qwen, openai",
+    zh: "例如：work、qwen、kimi",
+    en: "e.g. work, qwen, kimi",
   },
   loadModels: { zh: "加载模型", en: "Load Models" },
   saveConfig: { zh: "保存配置", en: "Save" },

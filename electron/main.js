@@ -24,6 +24,7 @@ const TOML = require("@iarna/toml");
 
 const PROFILE_SUFFIX = ".config.toml";
 const PROFILE_ORDER_FILE = ".codex-switcher-profile-order.json";
+const BUILTIN_PROVIDER_ID = "openai";
 const REPOSITORY_URL = "http://github.com/ihezebin/codex-switcher";
 const SUPPORT_URL = "https://ncm.hezebin.com";
 const UPDATE_MANIFEST_URL =
@@ -53,6 +54,8 @@ const mainTranslations = {
     invalidProfileName:
       "配置名称只能包含字母、数字、点、短横线和下划线，且不能以符号开头。",
     reservedConfigName: "config 是 Codex 主配置文件名，不能作为 profile 名称。",
+    reservedOpenaiName:
+      "openai 是 Codex 内置的 provider 名称，不能作为配置名称，请换一个名称。",
     noReadPermission: (file) => `没有权限读取 ${file}`,
     invalidToml: (file, message) =>
       `${path.basename(file)} 不是有效的 TOML：${message}`,
@@ -89,6 +92,8 @@ const mainTranslations = {
       "Profile names can contain letters, numbers, dots, hyphens, and underscores, and cannot start with a symbol.",
     reservedConfigName:
       "config is the main Codex config file name and cannot be used as a profile name.",
+    reservedOpenaiName:
+      "openai is Codex's built-in provider name. Choose another profile name.",
     noReadPermission: (file) => `No permission to read ${file}`,
     invalidToml: (file, message) =>
       `${path.basename(file)} is not valid TOML: ${message}`,
@@ -630,6 +635,22 @@ function validateProfileName(name) {
   }
 }
 
+function providerIdForName(name) {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "provider"
+  );
+}
+
+function validateUsableProfileName(name) {
+  validateProfileName(name);
+  if (providerIdForName(name) === BUILTIN_PROVIDER_ID) {
+    throw new Error(t("reservedOpenaiName"));
+  }
+}
+
 async function ensureCodexHome() {
   const home = codexHome();
   await fs.mkdir(home, { recursive: true, mode: 0o700 });
@@ -787,6 +808,98 @@ function profileMatchesConfig(profile, config) {
   return compared;
 }
 
+function profileProviderEntries(value) {
+  if (!value || typeof value !== "object") return [];
+  const providers = value.model_providers;
+  if (!providers || typeof providers !== "object" || Array.isArray(providers))
+    return [];
+  return Object.entries(providers).filter(
+    ([, provider]) => provider && typeof provider === "object",
+  );
+}
+
+async function readAllProfileValues(home) {
+  const entries = await fs.readdir(home, { withFileTypes: true });
+  const names = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(PROFILE_SUFFIX))
+    .map((entry) => entry.name.slice(0, -PROFILE_SUFFIX.length))
+    .sort();
+  const values = new Map();
+  let hasBroken = false;
+  for (const name of names) {
+    try {
+      const { value } = await readTomlFile(
+        path.join(home, `${name}${PROFILE_SUFFIX}`),
+      );
+      values.set(name, value);
+    } catch (_) {
+      hasBroken = true;
+    }
+  }
+  return { values, hasBroken };
+}
+
+// Keeps config.toml's model_providers in sync with the profiles on disk:
+// missing providers are added, differing ones are overwritten by the profile
+// version, and providers without a profile are removed. Orphan removal is
+// skipped while any profile file is unreadable so a broken file cannot strip
+// the provider it might still own.
+async function reconcileConfigProviders(profileValues, removeOrphans) {
+  if (!(await hasFile(configPath()))) return;
+  let configFile;
+  try {
+    configFile = await readTomlFile(configPath());
+  } catch (_) {
+    // A broken base config is reported when the user applies a profile.
+    return;
+  }
+  const config = configFile.value;
+  const desired = {};
+  for (const name of [...profileValues.keys()].sort()) {
+    for (const [providerId, provider] of profileProviderEntries(
+      profileValues.get(name),
+    )) {
+      desired[providerId] = provider;
+    }
+  }
+  const rawCurrent = config.model_providers;
+  const current =
+    rawCurrent && typeof rawCurrent === "object" && !Array.isArray(rawCurrent)
+      ? rawCurrent
+      : {};
+  const next = {};
+  if (!removeOrphans) {
+    for (const [providerId, provider] of Object.entries(current)) {
+      if (!(providerId in desired)) next[providerId] = provider;
+    }
+  }
+  for (const [providerId, provider] of Object.entries(desired)) {
+    next[providerId] = provider;
+  }
+  const replacedInvalidTable =
+    rawCurrent !== undefined && current !== rawCurrent;
+  if (!replacedInvalidTable && isDeepStrictEqual(current, next)) return;
+  if (Object.keys(next).length > 0) config.model_providers = next;
+  else delete config.model_providers;
+  await atomicWrite(configPath(), serialize(config));
+}
+
+// When the applied profile's provider id changes (rename or edited save), the
+// active model_provider in config.toml follows it so Codex keeps working.
+async function retargetActiveProvider(oldProviderId, newProviderId) {
+  if (!oldProviderId || !newProviderId || oldProviderId === newProviderId)
+    return;
+  let configFile;
+  try {
+    configFile = await readTomlFile(configPath());
+  } catch (_) {
+    return;
+  }
+  if (configFile.value.model_provider !== oldProviderId) return;
+  configFile.value.model_provider = newProviderId;
+  await atomicWrite(configPath(), serialize(configFile.value));
+}
+
 async function listProfiles() {
   const home = await ensureCodexHome();
   const hasCodexConfig = await hasFile(configPath());
@@ -794,6 +907,7 @@ async function listProfiles() {
   const files = await orderedProfileEntries(home, entries);
   const profiles = [];
   const profileValues = new Map();
+  let hasBrokenProfile = false;
   for (const item of files) {
     const { entry, name } = item;
     try {
@@ -801,6 +915,7 @@ async function listProfiles() {
       profiles.push(profileFromToml(name, value, source));
       profileValues.set(name, value);
     } catch (error) {
+      hasBrokenProfile = true;
       profiles.push({
         name,
         model: "",
@@ -813,6 +928,10 @@ async function listProfiles() {
         error: error.message,
       });
     }
+  }
+
+  if (hasCodexConfig) {
+    await reconcileConfigProviders(profileValues, !hasBrokenProfile);
   }
 
   let active;
@@ -856,11 +975,7 @@ async function readProfile(name) {
 }
 
 function formToml(name, model, reviewModel, baseUrl, apiKey) {
-  const providerId =
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "provider";
+  const providerId = providerIdForName(name);
   return {
     model: model || "",
     review_model: reviewModel || "",
@@ -1360,7 +1475,11 @@ async function saveProfile({
   apiKey,
   content,
 }) {
-  validateProfileName(name);
+  validateUsableProfileName(name);
+  const file = profilePath(name);
+  const previous = await readTomlFile(file)
+    .then(({ value }) => value)
+    .catch(() => null);
   const next =
     content !== undefined
       ? content
@@ -1373,21 +1492,24 @@ async function saveProfile({
             apiKey || "",
           ),
         );
+  let parsed;
   try {
-    TOML.parse(next);
+    parsed = TOML.parse(next);
   } catch (error) {
     throw new Error(t("invalidTomlSave", error.message));
   }
-  await ensureCodexHome();
-  await atomicWrite(
-    profilePath(name),
-    next.endsWith("\n") ? next : `${next}\n`,
-  );
+  const home = await ensureCodexHome();
+  await atomicWrite(file, next.endsWith("\n") ? next : `${next}\n`);
+  const { values, hasBroken } = await readAllProfileValues(home);
+  await reconcileConfigProviders(values, !hasBroken);
+  if (previous && typeof previous.model_provider === "string") {
+    await retargetActiveProvider(previous.model_provider, parsed.model_provider);
+  }
   return readProfile(name);
 }
 
 async function createProfile(payload) {
-  validateProfileName(payload.name);
+  validateUsableProfileName(payload.name);
   const existing = await listProfiles();
   if (
     existing.profiles.some(
@@ -1426,7 +1548,7 @@ async function deleteProfile(name) {
 
 async function renameProfile(oldName, newName) {
   validateProfileName(oldName);
-  validateProfileName(newName);
+  validateUsableProfileName(newName);
   if (oldName === newName) return listProfiles();
   const oldFile = profilePath(oldName);
   const newFile = profilePath(newName);
@@ -1437,6 +1559,42 @@ async function renameProfile(oldName, newName) {
     throw new Error(t("duplicateProfile", newName));
   }
   await fs.rename(oldFile, newFile);
+  const oldProviderId = providerIdForName(oldName);
+  const newProviderId = providerIdForName(newName);
+  if (oldProviderId !== newProviderId) {
+    try {
+      const { value } = await readTomlFile(newFile);
+      const ownedProviderId = value.model_provider === oldProviderId;
+      let touched = false;
+      if (ownedProviderId) {
+        value.model_provider = newProviderId;
+        touched = true;
+      }
+      const providers = value.model_providers;
+      if (
+        providers &&
+        typeof providers === "object" &&
+        providers[oldProviderId] !== undefined
+      ) {
+        const provider = providers[oldProviderId];
+        if (
+          provider &&
+          typeof provider === "object" &&
+          provider.name === oldName
+        ) {
+          provider.name = newName;
+        }
+        providers[newProviderId] = provider;
+        delete providers[oldProviderId];
+        touched = true;
+      }
+      if (touched) await atomicWrite(newFile, serialize(value));
+      if (ownedProviderId)
+        await retargetActiveProvider(oldProviderId, newProviderId);
+    } catch (_) {
+      // The file itself was renamed; a broken profile body shows up in the list.
+    }
+  }
   const home = await ensureCodexHome();
   const previousOrder = await readProfileOrder(home);
   const nextOrder = previousOrder.map((item) =>
