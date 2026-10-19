@@ -1726,10 +1726,7 @@ async function refreshTrayMenu(state) {
     },
   ]);
   tray.setContextMenu(menu);
-  tray.setToolTip(
-    current.profiles.find((profile) => profile.active)?.name ||
-      "Codex Switcher",
-  );
+  tray.setToolTip("codex-switcher");
   return current;
 }
 
